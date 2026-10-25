@@ -13,7 +13,12 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/sources")
 class SourceApi {
  private final JdbcTemplate db;private final Crypto crypto;private final Audit audit;
- SourceApi(JdbcTemplate db,Crypto crypto,Audit audit){this.db=db;this.crypto=crypto;this.audit=audit;}
+ private final java.util.Set<String> allowedHosts;
+ SourceApi(JdbcTemplate db,Crypto crypto,Audit audit,
+    @org.springframework.beans.factory.annotation.Value("${dataguard.allowed-source-hosts:}") String hosts){
+  this.db=db;this.crypto=crypto;this.audit=audit;
+  this.allowedHosts=new java.util.HashSet<>(java.util.Arrays.stream(hosts.split(",")).map(String::trim).filter(s->!s.isBlank()).toList());
+ }
  record Input(String name,String type,String host,Integer port,String databaseName,String username,String password){}
  record Grant(String name){}
  @GetMapping List<Map<String,Object>> list(Authentication auth){
@@ -72,6 +77,38 @@ class SourceApi {
  @GetMapping("/{id}/tables/{table}/columns") List<Map<String,Object>> columns(Authentication auth,@PathVariable String id,@PathVariable String table){
   Guard.admin(auth);
   return db.queryForList("SELECT column_name AS columnName,enabled,masked FROM dg_source_columns WHERE source_id=? AND table_name=? ORDER BY column_name",Guard.id(id),Guard.identifier(table));
+ }
+ @GetMapping("/{id}/tables/{table}/physical-columns")
+ List<Map<String,Object>> physicalColumns(Authentication auth,@PathVariable String id,@PathVariable String table){
+  Guard.admin(auth);String sourceId=Guard.id(id),validTable=Guard.identifier(table);
+  Map<String,Object> source=sourceForRead(sourceId);
+  String host=String.valueOf(source.get("host"));
+  if(!allowedHosts.contains(host))throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Source host is not approved");
+  java.util.Map<String,Map<String,Object>> grants=new java.util.HashMap<>();
+  for(Map<String,Object> grant:columns(auth,id,table))grants.put(String.valueOf(grant.get("columnName")),grant);
+  String jdbcUrl="jdbc:mysql://"+host+":"+source.get("port")+"/"+
+    Guard.identifier(String.valueOf(source.get("databaseName")))+
+    "?sslMode=VERIFY_IDENTITY&connectTimeout=3000&socketTimeout=6000";
+  List<Map<String,Object>> result=new java.util.ArrayList<>();
+  try(var connection=java.sql.DriverManager.getConnection(jdbcUrl,
+      String.valueOf(source.get("username")),decryptPassword(source))){
+   connection.setReadOnly(true);
+   try(var metadata=connection.getMetaData().getColumns(
+       String.valueOf(source.get("databaseName")),null,validTable,null)){
+    while(metadata.next()&&result.size()<200){
+     String name=metadata.getString("COLUMN_NAME");
+     if(name==null||!name.matches("[A-Za-z][A-Za-z0-9_]{0,63}"))continue;
+     String type=metadata.getString("TYPE_NAME");
+     Map<String,Object> grant=grants.get(name);
+     result.add(Map.of("columnName",name,"dataType",type==null?"—":type.toLowerCase(java.util.Locale.ROOT),
+        "enabled",grant!=null&&(Boolean.TRUE.equals(grant.get("enabled"))||"1".equals(String.valueOf(grant.get("enabled")))),
+        "masked",grant!=null&&(Boolean.TRUE.equals(grant.get("masked"))||"1".equals(String.valueOf(grant.get("masked"))))));
+    }
+   }
+  }catch(java.sql.SQLException ex){
+   throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,"Unable to inspect approved datasource metadata");
+  }
+  return result;
  }
  @PostMapping("/{id}/tables/{table}/columns") Map<String,Object> column(Authentication auth,@PathVariable String id,@PathVariable String table,@RequestBody Grant in){
   Guard.admin(auth);String source=Guard.id(id),name=Guard.identifier(table),column=Guard.identifier(in.name());

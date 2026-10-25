@@ -8,13 +8,27 @@ const filtered=computed(()=>rows.value.filter(r=>match(r,search.value,['name','t
 async function refresh(){try{rows.value=await api('/api/sources')}catch(e){fail(e)}}
 async function open(row:DataRow){selected.value=row;tab.value='fields';activeTable.value='';await loadTables()}
 async function loadTables(){if(!selected.value)return;try{tables.value=await api('/api/sources/'+selected.value.id+'/tables')}catch(e){fail(e)}}
-async function loadColumns(table:string){activeTable.value=table;try{columns.value=await api('/api/sources/'+selected.value?.id+'/tables/'+table+'/columns')}catch(e){fail(e)}}
+async function loadColumns(table:string){
+ activeTable.value=table;
+ const base='/api/sources/'+selected.value?.id+'/tables/'+table;
+ try{
+  const physical=await api<DataRow[]>(base+'/physical-columns');
+  if(!physical.length)throw Error('No metadata available');
+  columns.value=physical;
+ }catch{
+  try{columns.value=await api(base+'/columns')}catch(e){fail(e)}
+ }
+}
 function create(){form.value={name:'',type:'MYSQL',host:'',port:3306,databaseName:'',username:'',password:''};sourceOpen.value=true}
 async function save(){try{busy.value=true;await api('/api/sources','POST',form.value);sourceOpen.value=false;await refresh()}catch(e){fail(e)}finally{busy.value=false}}
 async function toggle(){if(!selected.value)return;try{await api('/api/sources/'+selected.value.id+'/toggle','POST');selected.value=null;await refresh()}catch(e){fail(e)}}
 async function addTable(){if(!selected.value||!newTable.value.trim())return;try{await api('/api/sources/'+selected.value.id+'/tables','POST',{name:newTable.value.trim()});newTable.value='';await loadTables();await refresh()}catch(e){fail(e)}}
 async function removeTable(table:string){if(!selected.value)return;try{await api('/api/sources/'+selected.value.id+'/tables/'+table,'DELETE');await loadTables()}catch(e){fail(e)}}
 async function addColumn(){if(!selected.value||!activeTable.value||!newColumn.value.trim())return;try{await api('/api/sources/'+selected.value.id+'/tables/'+activeTable.value+'/columns','POST',{name:newColumn.value.trim()});newColumn.value='';await loadColumns(activeTable.value)}catch(e){fail(e)}}
+async function toggleAllowed(row:DataRow){
+ if(row.enabled){confirm('撤销该字段的 AI 读取权限？',()=>removeColumn(row.columnName))}
+ else {newColumn.value=row.columnName;await addColumn()}
+}
 async function toggleMask(column:string){
  if(!selected.value)return;
  try{await api('/api/sources/'+selected.value.id+'/tables/'+activeTable.value+'/columns/'+column+'/mask','POST');await loadColumns(activeTable.value)}
@@ -58,10 +72,11 @@ onMounted(()=>void refresh());defineExpose({refresh});
     </template>
     <template v-else>
      <a-button type="link" @click="activeTable=''">← 返回数据表</a-button><h3>{{activeTable}} 的可读字段</h3>
-     <div class="inline-entry"><a-input v-model:value="newColumn" placeholder="输入字段名"/><a-button type="primary" @click="addColumn">授权</a-button></div>
+     <div v-if="!columns.some(c=>c.dataType)" class="inline-entry"><a-input v-model:value="newColumn" placeholder="输入字段名"/><a-button type="primary" @click="addColumn">授权</a-button></div>
      <a-table :data-source="columns" row-key="columnName" size="small" :pagination="false">
   <a-table-column title="字段名" data-index="columnName"/>
-  <a-table-column title="AI 可读取"><template #default="{record}"><a-checkbox :checked="!!record.enabled" :disabled="true"/></template></a-table-column>
+  <a-table-column title="字段类型"><template #default="{record}">{{record.dataType||'—'}}</template></a-table-column>
+  <a-table-column title="AI 可读取"><template #default="{record}"><a-checkbox :checked="!!record.enabled" @change="toggleAllowed(record)"/></template></a-table-column>
   <a-table-column title="脱敏"><template #default="{record}"><a-checkbox :checked="!!record.masked" :disabled="!record.enabled" @change="toggleMask(record.columnName)"/></template></a-table-column>
   <a-table-column title="操作"><template #default="{record}"><a-button v-if="record.enabled" type="link" danger @click="confirm('确认撤销字段授权？',()=>removeColumn(record.columnName))">撤销</a-button><a-button v-else type="link" @click="newColumn=record.columnName;addColumn()">恢复</a-button></template></a-table-column>
  </a-table>

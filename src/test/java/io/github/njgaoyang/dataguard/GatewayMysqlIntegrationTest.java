@@ -19,6 +19,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class GatewayMysqlIntegrationTest {
  @Autowired JdbcTemplate db;
  @Autowired PolicyEngine policy;
+ @Autowired SourceApi sources;
  @Autowired MockMvc mvc;
  @Test void flywayAndFirstUserAreInitialized(){
   assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM dg_users WHERE username='admin'",Integer.class));
@@ -40,6 +41,31 @@ class GatewayMysqlIntegrationTest {
  @Test void initialPasswordMustBlockAdministrativeApi() throws Exception {
   mvc.perform(get("/api/sources").with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user("admin").roles("ADMIN")))
     .andExpect(status().is(428));
+ }
+ @Test
+ @Transactional
+ void revokingPlatformColumnNeverResurrectsOldAgentGrant(){
+  String source=UUID.randomUUID().toString(),owner=UUID.randomUUID().toString(),agent=UUID.randomUUID().toString();
+  db.update("INSERT INTO dg_users(id,username,display_name,password_hash,role_code,must_change_password) VALUES(?,?,?,?,?,0)",
+    owner,"user_"+owner.substring(0,8),"Test owner","hash","READER");
+  db.update("""
+    INSERT INTO dg_sources(id,name,type,host,port,database_name,read_username,password_ciphertext,enabled)
+    VALUES(?,?,?,?,?,?,?,?,1)
+    """,source,"source","MYSQL","127.0.0.1",3306,"business","reader","encrypted");
+  db.update("INSERT INTO dg_source_tables(source_id,table_name) VALUES(?,'orders')",source);
+  db.update("INSERT INTO dg_source_columns(source_id,table_name,column_name) VALUES(?,'orders','amount')",source);
+  db.update("INSERT INTO dg_agents(id,owner_user_id,name,token_hash,expires_at) VALUES(?,?,?,?,DATE_ADD(NOW(3),INTERVAL 7 DAY))",
+    agent,owner,"Agent",AgentApi.digest("token-"+agent));
+  db.update("INSERT INTO dg_agent_tables(agent_id,source_id,table_name) VALUES(?,?,'orders')",agent,source);
+  db.update("INSERT INTO dg_agent_columns(agent_id,source_id,table_name,column_name) VALUES(?,?,'orders','amount')",agent,source);
+  var admin=new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+    "admin","N/A",java.util.List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMIN")));
+  sources.toggleMask(admin,source,"orders","amount");
+  assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM dg_source_columns WHERE source_id=? AND table_name='orders' AND column_name='amount' AND masked=1",Integer.class,source));
+  sources.removeColumn(admin,source,"orders","amount");
+  assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM dg_agent_columns WHERE agent_id=?",Integer.class,agent));
+  sources.column(admin,source,"orders",new SourceApi.Grant("amount"));
+  assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM dg_agent_columns WHERE agent_id=?",Integer.class,agent));
  }
  @Test
  @Transactional
