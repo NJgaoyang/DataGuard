@@ -21,16 +21,17 @@ class McpGateway {
  private final JdbcTemplate db;
  private final AgentApi agents;
  private final SourceApi sources;
+ private final BusinessReadExecutor executor;
  private final PolicyEngine policy;
  private final Audit audit;
  private final Set<String> allowedHosts;
  private final Semaphore slots;
  private final int timeoutSeconds;
- McpGateway(JdbcTemplate db,AgentApi agents,SourceApi sources,PolicyEngine policy,Audit audit,
+ McpGateway(JdbcTemplate db,AgentApi agents,SourceApi sources,PolicyEngine policy,Audit audit,BusinessReadExecutor executor,
    @Value("${dataguard.allowed-source-hosts:}") String hosts,
    @Value("${dataguard.max-concurrency:4}") int concurrency,
    @Value("${dataguard.query-timeout-seconds:5}") int timeoutSeconds){
-  this.db=db;this.agents=agents;this.sources=sources;this.policy=policy;this.audit=audit;
+  this.db=db;this.agents=agents;this.sources=sources;this.policy=policy;this.audit=audit;this.executor=executor;
   this.allowedHosts=new HashSet<>(Arrays.stream(hosts.split(",")).map(String::trim).filter(s->!s.isBlank()).toList());
   this.slots=new Semaphore(Math.max(1,Math.min(32,concurrency)));
   this.timeoutSeconds=Math.max(1,Math.min(30,timeoutSeconds));
@@ -208,27 +209,7 @@ class McpGateway {
    String sql="SELECT "+String.join(",",columns.stream().map(s->"`"+s+"`").toList())+
       " FROM `"+table+"`"+(filterColumn==null?"":" WHERE `"+filterColumn+"` = ?")+
       (sortColumn==null?"":" ORDER BY `"+sortColumn+"` "+sortDirection)+" LIMIT "+limit;
-   String jdbcUrl="jdbc:mysql://"+host+":"+source.get("port")+"/"+Guard.identifier((String)source.get("databaseName"))+
-       "?sslMode=VERIFY_IDENTITY&connectTimeout=3000&socketTimeout=6000";
-   List<Map<String,Object>> rows=new ArrayList<>();
-   try(var connection=DriverManager.getConnection(jdbcUrl,(String)source.get("username"),sources.decryptPassword(source))){
-    connection.setReadOnly(true);
-    try(var statement=connection.prepareStatement(sql,ResultSet.TYPE_FORWARD_ONLY,ResultSet.CONCUR_READ_ONLY)){
-     statement.setQueryTimeout(timeoutSeconds);statement.setMaxRows(limit);
-     if(filterColumn!=null)statement.setString(1,filterValue);
-     try(var result=statement.executeQuery()){
-      while(result.next()){
-       Map<String,Object> row=new LinkedHashMap<>();
-       for(String column:columns){
-        Object value=result.getObject(column);
-        row.put(column,masked.contains(column)||value instanceof byte[]?"[REDACTED]":
-          value instanceof String text && text.length()>256?text.substring(0,256):value);
-       }
-       rows.add(row);
-      }
-     }
-    }
-   }
+   List<Map<String,Object>> rows=executor.execute(source,sql,filterValue,columns,masked,limit,timeoutSeconds);
    // Re-evaluate revocations after I/O and before releasing any values.
    authorizeColumns(agentId,sourceId,table,requested);
    policy.verifyStillAllowed(verdict,agent,sourceId,table,requested.stream().sorted().toList(),limit);
