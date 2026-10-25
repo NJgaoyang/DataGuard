@@ -19,7 +19,7 @@ jobs:
           --health-cmd="mysqladmin ping -h localhost -proot-password-only"
           --health-interval=10s --health-timeout=5s --health-retries=12
     env:
-      DG_MYSQL_URL: jdbc:mysql://127.0.0.1:3306/dataguard?sslMode=DISABLED
+      DG_MYSQL_URL: jdbc:mysql://127.0.0.1:3306/dataguard?sslMode=REQUIRED
       DG_MYSQL_USER: dataguard
       DG_MYSQL_PASSWORD: test-password-only
       DG_INITIAL_ADMIN_PASSWORD: DevOnly-Test1!Change

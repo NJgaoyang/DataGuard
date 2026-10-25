@@ -37,6 +37,10 @@ class GatewayMysqlIntegrationTest {
    .andExpect(status().isUnauthorized());
   mvc.perform(get("/api/csrf")).andExpect(status().isOk());
  }
+ @Test void initialPasswordMustBlockAdministrativeApi() throws Exception {
+  mvc.perform(get("/api/sources").with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user("admin").roles("ADMIN")))
+    .andExpect(status().is(428));
+ }
  @Test
  @Transactional
  void runtimeRulesAreFailClosedAndAnApprovalCanOnlyBeConsumedOnce(){

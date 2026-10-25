@@ -195,7 +195,7 @@ class McpGateway {
   String host=String.valueOf(source.get("host"));
   if(!allowedHosts.contains(host))throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Source host not allowlisted");
   long started=System.nanoTime();
-  PolicyEngine.Verdict verdict=policy.begin(agent,sourceId,table,columns,limit,filterColumn,filterValue,sortColumn,sortDirection);
+  PolicyEngine.Verdict verdict=policy.begin(agent,sourceId,table,requested.stream().sorted().toList(),limit,filterColumn,filterValue,sortColumn,sortDirection);
   if("DENY".equals(verdict.action()))throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Policy denied");
   if("APPROVAL".equals(verdict.action()))throw new PolicyEngine.Pending(verdict.id());
   boolean succeeded=false,acquired=false;

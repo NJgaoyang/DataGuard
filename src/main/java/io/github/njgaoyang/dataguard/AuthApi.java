@@ -39,7 +39,7 @@ class SecurityConfig {
     .roles((String)r.get(0).get("role_code")).build();
   };
  }
- @Bean SecurityFilterChain security(HttpSecurity http,InitialPasswordGuard guard) throws Exception {
+ @Bean SecurityFilterChain security(HttpSecurity http,JdbcTemplate db) throws Exception {
   http.csrf(csrf->csrf.ignoringRequestMatchers(PathPatternRequestMatcher.withDefaults().matcher("/mcp")))
    .authorizeHttpRequests(auth->auth
     .requestMatchers("/api/csrf","/mcp","/actuator/health","/assets/**","/","/index.html","/favicon.ico").permitAll()
@@ -52,11 +52,10 @@ class SecurityConfig {
    .logout(logout->logout.logoutUrl("/logout").logoutSuccessHandler((req,res,auth)->res.setStatus(204))
      .invalidateHttpSession(true).deleteCookies("JSESSIONID"))
    .sessionManagement(s->s.sessionFixation(f->f.migrateSession()))
-   .addFilterAfter(guard,org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter.class);
+   .addFilterAfter(new InitialPasswordGuard(db),org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter.class);
   return http.build();
  }
 }
-@org.springframework.stereotype.Component
 class InitialPasswordGuard extends OncePerRequestFilter {
  private final JdbcTemplate db;
  InitialPasswordGuard(JdbcTemplate db){this.db=db;}
