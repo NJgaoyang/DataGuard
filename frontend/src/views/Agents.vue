@@ -3,12 +3,14 @@ import {computed,onMounted,ref,watch} from 'vue';
 import {api,stamp,match,page,fail,confirm,type DataRow,type User} from '../api';
 const props=defineProps<{user:User}>();
 const rows=ref<DataRow[]>([]),sources=ref<DataRow[]>([]),users=ref<DataRow[]>([]),selected=ref<DataRow|null>(null),search=ref(''),tab=ref('grants'),secret=ref(''),createOpen=ref(false),form=ref({name:'',ownerId:'',validDays:30}),grants=ref<DataRow>({tables:[],columns:[]}),
- sourceId=ref(''),tableName=ref(''),columnName=ref(''),expiry=ref(30),usage=ref<DataRow>({stats:{},recent:[]});
+ sourceId=ref(''),tableName=ref(''),columnName=ref(''),expiry=ref(30),usage=ref<DataRow>({stats:{},recent:[]}),editingGrants=ref(false);
 const mcpEndpoint=window.location.origin+'/mcp';
 const filtered=computed(()=>rows.value.filter(r=>match(r,search.value,['name','ownerName'])));
+const sourceName=(id:string)=>sources.value.find(s=>s.id===id)?.name||'数据源';
+const columnsFor=(r:DataRow)=>(grants.value.columns||[]).filter((c:DataRow)=>c.sourceId===r.sourceId&&c.tableName===r.tableName);
 const status=(r:DataRow)=>r.revokedAt||!r.enabled?'已停用':new Date(r.expiresAt).getTime()<Date.now()?'已过期':'正常';
 async function refresh(){try{rows.value=await api('/api/agents')}catch(e){fail(e)}}
-async function open(row:DataRow){selected.value=row;tab.value='grants';usage.value={stats:{},recent:[]};try{grants.value=await api('/api/agents/'+row.id+'/grants');if(props.user.roleCode==='ADMIN')sources.value=await api('/api/sources')}catch(e){fail(e)}}
+async function open(row:DataRow){selected.value=row;tab.value='grants';editingGrants.value=false;usage.value={stats:{},recent:[]};try{grants.value=await api('/api/agents/'+row.id+'/grants');if(props.user.roleCode==='ADMIN')sources.value=await api('/api/sources')}catch(e){fail(e)}}
 async function loadUsage(){if(!selected.value)return;try{usage.value=await api('/api/agents/'+selected.value.id+'/usage')}catch(e){fail(e)}}
 watch(tab,next=>{if(next==='usage')void loadUsage()});
 async function openCreate(){try{if(props.user.roleCode==='ADMIN')users.value=await api('/api/users');form.value={name:'',ownerId:'',validDays:30};createOpen.value=true}catch(e){fail(e)}}
@@ -40,15 +42,28 @@ onMounted(()=>void refresh());defineExpose({refresh});
      <a-descriptions-item label="MCP 地址">{{mcpEndpoint}}</a-descriptions-item>
     </a-descriptions><div class="drawer-actions"><a-button danger @click="confirm('撤销后令牌立即失效，确认？',revoke)">撤销 Agent</a-button></div></a-tab-pane>
     <a-tab-pane key="grants" tab="访问授权">
-     <div class="drawer-section-title">可访问的数据表</div>
-     <div v-for="r in grants.tables||[]" :key="r.sourceId+r.tableName" class="grant-row"><span>{{r.tableName}}</span><a-button danger type="link" @click="removeTable(r)">撤销</a-button></div>
-     <div v-for="r in grants.columns||[]" :key="r.sourceId+r.tableName+r.columnName" class="grant-row small"><span>{{r.tableName}} / {{r.columnName}}</span><a-button danger type="text" @click="removeColumn(r)">×</a-button></div>
-     <a-divider v-if="user.roleCode==='ADMIN'"/>
-     <a-form v-if="user.roleCode==='ADMIN'" layout="vertical"><a-form-item label="数据源"><a-select v-model:value="sourceId" placeholder="选择已配置的数据源" :options="sources.map(s=>({value:s.id,label:s.name}))"/></a-form-item>
+     <div class="drawer-section-title">可访问的数据源和表</div>
+     <div v-if="!(grants.tables||[]).length" class="subtle">尚未为当前 Agent 授权数据表。</div>
+     <div v-for="r in grants.tables||[]" :key="r.sourceId+r.tableName" class="grant-tree">
+      <div class="grant-tree-source">⌄ {{sourceName(r.sourceId)}}</div>
+      <div class="grant-tree-table">
+       <a-checkbox :checked="true" :disabled="!editingGrants" @change="confirm('确认撤销整张表的 Agent 授权？',()=>removeTable(r))">{{r.tableName}}</a-checkbox>
+      </div>
+      <div v-for="column in columnsFor(r)" :key="column.columnName" class="grant-tree-column">
+       <a-checkbox :checked="true" :disabled="!editingGrants" @change="confirm('确认撤销字段授权？',()=>removeColumn(column))">{{column.columnName}}</a-checkbox>
+      </div>
+     </div>
+     <div class="grant-limit">
+      <span>最大读取行数</span><strong>200 行</strong>
+      <a-button v-if="user.roleCode==='ADMIN'" size="small" @click="editingGrants=!editingGrants">{{editingGrants?'完成编辑':'编辑授权'}}</a-button>
+     </div>
+     <a-form v-if="user.roleCode==='ADMIN'&&editingGrants" class="grant-editor" layout="vertical">
+      <a-form-item label="数据源"><a-select v-model:value="sourceId" placeholder="选择已配置的数据源" :options="sources.map(s=>({value:s.id,label:s.name}))"/></a-form-item>
       <a-form-item label="表名"><a-input v-model:value="tableName" placeholder="先配置平台表白名单"/></a-form-item>
       <a-button @click="grantTable">授权该表</a-button>
       <a-form-item label="字段名" style="margin-top:18px"><a-input v-model:value="columnName" placeholder="先配置平台字段白名单"/></a-form-item>
-      <a-button type="primary" @click="grantColumn">授权该字段</a-button></a-form>
+      <a-button type="primary" @click="grantColumn">授权该字段</a-button>
+     </a-form>
      <p class="subtle">Agent 只能读取平台白名单与自身授权的交集。</p>
     </a-tab-pane>
     <a-tab-pane key="usage" tab="使用情况">

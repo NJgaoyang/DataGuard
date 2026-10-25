@@ -10,3 +10,14 @@
 .login-shell{height:100vh;min-height:580px;display:grid;place-items:center;background:#f8fafd}.login-panel{background:#fff;width:410px;max-width:calc(100vw - 32px);padding:37px 35px 40px;border:1px solid #e9edf3;border-radius:9px;box-shadow:0 8px 30px #1b3b6308}.login-brand{display:flex;gap:9px;align-items:center;font-size:16px;color:#1264e7}.login-brand .anticon{font-size:24px}.login-panel h1{font-size:24px;margin:33px 0 7px}.login-panel p{margin:0 0 25px;color:#8b97a8;font-size:13px}.login-error{margin-bottom:16px}.login-panel .ant-btn-primary{margin-top:8px}
 .record-filters .search{width:250px}.record-filters .ant-picker{width:250px}
 @media(max-width:1100px){.metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.record-filters .search{width:220px}}@media(max-width:760px){.sidebar{transform:translateX(-100%);width:230px;transition:transform .18s}.sidebar.open{transform:none}.mobile-mask{display:block;position:fixed;inset:0;z-index:19;border:0;background:#15213266}.topbar{left:0;padding:0 18px}.mobile-toggle{display:inline-flex;font-size:18px}.workspace{margin-left:0;padding:85px 13px 25px}.workspace-head h1{font-size:19px}.metric-grid{gap:9px}.metric{height:100px;padding:14px 15px}.metric strong{font-size:24px}.metric-decoration{right:12px;top:14px}.panel-head{padding:14px}.toolbar{padding:12px}.search{width:100%}.form-grid{grid-template-columns:1fr}.form-grid .full{grid-column:auto}.record-filters .search{width:100%}.topbar-actions{gap:10px}}
+
+/* Compact read-only Agent permission tree; editing remains an explicit action. */
+.grant-tree{padding:5px 0 12px;border-bottom:1px solid #edf1f5;font-size:13px}
+.grant-tree-source{font-weight:600;color:#32445d;margin:6px 0 8px}
+.grant-tree-table{margin-left:20px;padding:3px 0}
+.grant-tree-column{margin-left:47px;padding:4px 0;font-size:12px}
+.grant-tree .ant-checkbox-disabled .ant-checkbox-inner{background:#1766e8;border-color:#1766e8}
+.grant-tree .ant-checkbox-disabled.ant-checkbox-checked .ant-checkbox-inner:after{border-color:#fff}
+.grant-limit{display:flex;align-items:center;gap:10px;justify-content:space-between;padding:18px 0 12px;font-size:12px;color:#66778c}
+.grant-limit strong{color:#21354f;font-size:13px;margin-left:auto}
+.grant-editor{border-top:1px solid #edf1f5;padding-top:16px;margin-top:8px}
