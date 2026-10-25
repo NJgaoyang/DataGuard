@@ -43,7 +43,7 @@ onMounted(()=>void refresh());defineExpose({refresh});
   <a-descriptions-item label="目标表">{{detail.tableName}}</a-descriptions-item>
   <a-descriptions-item label="请求字段">{{detail.columnsRequested}}</a-descriptions-item>
   <a-descriptions-item label="请求行数">{{detail.requestedRows}}</a-descriptions-item>
-  <a-descriptions-item label="实际返回">{{detail.returnedRows??'—'}}</a-descriptions-item>
+  <a-descriptions-item label="返回行数">{{detail.returnedRows??'—'}}</a-descriptions-item>
   <a-descriptions-item label="耗时">{{detail.durationMs==null?'—':detail.durationMs+' ms'}}</a-descriptions-item>
   <a-descriptions-item label="规则动作">{{detail.action}}</a-descriptions-item>
   <a-descriptions-item label="命中规则">{{detail.ruleName||'未匹配规则（默认拒绝）'}}</a-descriptions-item>

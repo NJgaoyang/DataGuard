@@ -40,3 +40,14 @@ jobs:
         run: cd frontend && npm run build
       - name: Maven verification
         run: mvn -B -ntp clean verify
+      - name: Install Chromium for browser acceptance
+        run: cd frontend && npx playwright install --with-deps chromium
+      - name: Browser acceptance and UI screenshots
+        run: cd frontend && npx playwright test
+      - name: Upload reviewed UI screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dataguard-v1-ui-screenshots
+          path: frontend/test-results/
+          if-no-files-found: ignore
