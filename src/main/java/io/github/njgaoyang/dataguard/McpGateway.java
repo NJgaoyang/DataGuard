@@ -24,14 +24,15 @@ class McpGateway {
  private final BusinessReadExecutor executor;
  private final PolicyEngine policy;
  private final Audit audit;
+ private final com.fasterxml.jackson.databind.ObjectMapper json;
  private final Set<String> allowedHosts;
  private final Semaphore slots;
  private final int timeoutSeconds;
- McpGateway(JdbcTemplate db,AgentApi agents,SourceApi sources,PolicyEngine policy,Audit audit,BusinessReadExecutor executor,
+ McpGateway(JdbcTemplate db,AgentApi agents,SourceApi sources,PolicyEngine policy,Audit audit,BusinessReadExecutor executor,com.fasterxml.jackson.databind.ObjectMapper json,
    @Value("${dataguard.allowed-source-hosts:}") String hosts,
    @Value("${dataguard.max-concurrency:4}") int concurrency,
    @Value("${dataguard.query-timeout-seconds:5}") int timeoutSeconds){
-  this.db=db;this.agents=agents;this.sources=sources;this.policy=policy;this.audit=audit;this.executor=executor;
+  this.db=db;this.agents=agents;this.sources=sources;this.policy=policy;this.audit=audit;this.executor=executor;this.json=json;
   this.allowedHosts=new HashSet<>(Arrays.stream(hosts.split(",")).map(String::trim).filter(s->!s.isBlank()).toList());
   this.slots=new Semaphore(Math.max(1,Math.min(32,concurrency)));
   this.timeoutSeconds=Math.max(1,Math.min(30,timeoutSeconds));
@@ -93,7 +94,7 @@ class McpGateway {
  private Map<String,Object> toolResult(Object value,boolean error){
   try{
    return Map.of("content",List.of(Map.of("type","text","text",
-    new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(value))),"isError",error);
+    json.writeValueAsString(value))),"isError",error);
   }catch(Exception ex){throw new IllegalStateException("Serialization failure");}
  }
  private List<Map<String,Object>> tools(){
