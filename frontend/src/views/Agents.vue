@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import {computed,onMounted,ref} from 'vue';
-import {api,stamp,match,page,fail,confirm,type DataRow} from '../api';
+import {api,stamp,match,page,fail,confirm,type DataRow,type User} from '../api';
+const props=defineProps<{user:User}>();
 const rows=ref<DataRow[]>([]),sources=ref<DataRow[]>([]),users=ref<DataRow[]>([]),selected=ref<DataRow|null>(null),search=ref(''),tab=ref('grants'),secret=ref(''),createOpen=ref(false),form=ref({name:'',ownerId:'',validDays:30}),grants=ref<DataRow>({tables:[],columns:[]}),
  sourceId=ref(''),tableName=ref(''),columnName=ref(''),expiry=ref(30);
 const mcpEndpoint=window.location.origin+'/mcp';
 const filtered=computed(()=>rows.value.filter(r=>match(r,search.value,['name','ownerName'])));
 const status=(r:DataRow)=>r.revokedAt||!r.enabled?'已停用':new Date(r.expiresAt).getTime()<Date.now()?'已过期':'正常';
 async function refresh(){try{rows.value=await api('/api/agents')}catch(e){fail(e)}}
-async function open(row:DataRow){selected.value=row;tab.value='grants';try{grants.value=await api('/api/agents/'+row.id+'/grants');sources.value=await api('/api/sources')}catch(e){fail(e)}}
-async function openCreate(){try{users.value=await api('/api/users');form.value={name:'',ownerId:'',validDays:30};createOpen.value=true}catch(e){fail(e)}}
+async function open(row:DataRow){selected.value=row;tab.value='grants';try{grants.value=await api('/api/agents/'+row.id+'/grants');if(props.user.roleCode==='ADMIN')sources.value=await api('/api/sources')}catch(e){fail(e)}}
+async function openCreate(){try{if(props.user.roleCode==='ADMIN')users.value=await api('/api/users');form.value={name:'',ownerId:'',validDays:30};createOpen.value=true}catch(e){fail(e)}}
 async function save(){try{const data=await api<DataRow>('/api/agents','POST',{...form.value,ownerId:form.value.ownerId||null});createOpen.value=false;secret.value=data.token;await refresh()}catch(e){fail(e)}}
 async function revoke(){if(!selected.value)return;try{await api('/api/agents/'+selected.value.id+'/revoke','POST');selected.value=null;await refresh()}catch(e){fail(e)}}
 async function grantTable(){if(!selected.value||!sourceId.value||!tableName.value)return;try{await api('/api/agents/'+selected.value.id+'/tables','POST',{sourceId:sourceId.value,tableName:tableName.value});await open(selected.value)}catch(e){fail(e)}}
@@ -24,11 +25,11 @@ onMounted(()=>void refresh());defineExpose({refresh});
  <a-table-column title="Agent 名称"><template #default="{record}"><a-button type="link" class="name-link" @click="open(record)">♧ {{record.name}}</a-button></template></a-table-column>
  <a-table-column title="所属用户" data-index="ownerName"/>
  <a-table-column title="状态"><template #default="{record}"><a-tag :color="status(record)==='正常'?'green':'red'">{{status(record)}}</a-tag></template></a-table-column>
- <a-table-column title="有效期"><template #default="{record}">{{stamp(record.expiresAt)}}</template></a-table-column>
+ <a-table-column title="最近访问"><template #default="{record}">{{stamp(record.lastAccess)}}</template></a-table-column>
  <a-table-column title="操作"><template #default="{record}"><a-button type="link" @click="open(record)">查看</a-button></template></a-table-column>
  </a-table></section>
  <a-drawer :open="!!selected" width="500" :title="selected?.name" @close="selected=null">
-  <template v-if="selected"><div class="drawer-heading"><strong>{{selected.name}}</strong><a-tag color="green">{{status(selected)}}</a-tag></div>
+  <template v-if="selected"><div class="drawer-heading"><strong>{{selected.name}}</strong><a-tag :color="status(selected)==='正常'?'green':'red'">{{status(selected)}}</a-tag></div>
    <a-tabs v-model:active-key="tab">
     <a-tab-pane key="info" tab="基本信息"><a-descriptions :column="1" size="small" bordered>
      <a-descriptions-item label="Agent ID">{{selected.id}}</a-descriptions-item>
@@ -40,8 +41,8 @@ onMounted(()=>void refresh());defineExpose({refresh});
      <div class="drawer-section-title">可访问的数据表</div>
      <div v-for="r in grants.tables||[]" :key="r.sourceId+r.tableName" class="grant-row"><span>{{r.tableName}}</span><a-button danger type="link" @click="removeTable(r)">撤销</a-button></div>
      <div v-for="r in grants.columns||[]" :key="r.sourceId+r.tableName+r.columnName" class="grant-row small"><span>{{r.tableName}} / {{r.columnName}}</span><a-button danger type="text" @click="removeColumn(r)">×</a-button></div>
-     <a-divider/>
-     <a-form layout="vertical"><a-form-item label="数据源"><a-select v-model:value="sourceId" placeholder="选择已配置的数据源" :options="sources.map(s=>({value:s.id,label:s.name}))"/></a-form-item>
+     <a-divider v-if="user.roleCode==='ADMIN'"/>
+     <a-form v-if="user.roleCode==='ADMIN'" layout="vertical"><a-form-item label="数据源"><a-select v-model:value="sourceId" placeholder="选择已配置的数据源" :options="sources.map(s=>({value:s.id,label:s.name}))"/></a-form-item>
       <a-form-item label="表名"><a-input v-model:value="tableName" placeholder="先配置平台表白名单"/></a-form-item>
       <a-button @click="grantTable">授权该表</a-button>
       <a-form-item label="字段名" style="margin-top:18px"><a-input v-model:value="columnName" placeholder="先配置平台字段白名单"/></a-form-item>
@@ -54,7 +55,7 @@ onMounted(()=>void refresh());defineExpose({refresh});
  </a-drawer>
  <a-modal v-model:open="createOpen" title="新建 Agent" ok-text="创建" @ok="save">
   <a-form layout="vertical"><a-form-item label="Agent 名称" required><a-input v-model:value="form.name"/></a-form-item>
-   <a-form-item label="所属用户"><a-select v-model:value="form.ownerId" placeholder="不选则归属本人" allow-clear :options="users.map(u=>({value:u.id,label:u.displayName}))"/></a-form-item>
+   <a-form-item v-if="user.roleCode==='ADMIN'" label="所属用户"><a-select v-model:value="form.ownerId" placeholder="不选则归属本人" allow-clear :options="users.map(u=>({value:u.id,label:u.displayName}))"/></a-form-item>
    <a-form-item label="有效期（天）"><a-input-number v-model:value="form.validDays" :min="1" :max="90"/></a-form-item>
   </a-form>
  </a-modal>

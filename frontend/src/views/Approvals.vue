@@ -45,6 +45,7 @@ onMounted(()=>void refresh());defineExpose({refresh});
    <a-descriptions-item label="目标表">{{detail.tableName}}</a-descriptions-item>
    <a-descriptions-item label="读取字段">{{detail.columnsRequested}}</a-descriptions-item>
    <a-descriptions-item label="申请行数">{{detail.requestedRows}} 行</a-descriptions-item>
+   <a-descriptions-item label="命中规则">{{detail.ruleName||'未匹配规则'}}</a-descriptions-item>
    <a-descriptions-item label="规则动作">{{detail.action==='APPROVAL'?'需要审批':detail.action==='DENY'?'直接拒绝':'直接放行'}}</a-descriptions-item>
    <a-descriptions-item label="审批人">{{detail.approverName||'—'}}</a-descriptions-item>
    <a-descriptions-item label="申请时间">{{stamp(detail.createdAt)}}</a-descriptions-item>

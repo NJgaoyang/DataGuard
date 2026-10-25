@@ -15,6 +15,11 @@ async function toggle(){if(!selected.value)return;try{await api('/api/sources/'+
 async function addTable(){if(!selected.value||!newTable.value.trim())return;try{await api('/api/sources/'+selected.value.id+'/tables','POST',{name:newTable.value.trim()});newTable.value='';await loadTables();await refresh()}catch(e){fail(e)}}
 async function removeTable(table:string){if(!selected.value)return;try{await api('/api/sources/'+selected.value.id+'/tables/'+table,'DELETE');await loadTables()}catch(e){fail(e)}}
 async function addColumn(){if(!selected.value||!activeTable.value||!newColumn.value.trim())return;try{await api('/api/sources/'+selected.value.id+'/tables/'+activeTable.value+'/columns','POST',{name:newColumn.value.trim()});newColumn.value='';await loadColumns(activeTable.value)}catch(e){fail(e)}}
+async function toggleMask(column:string){
+ if(!selected.value)return;
+ try{await api('/api/sources/'+selected.value.id+'/tables/'+activeTable.value+'/columns/'+column+'/mask','POST');await loadColumns(activeTable.value)}
+ catch(e){fail(e)}
+}
 async function removeColumn(column:string){if(!selected.value)return;try{await api('/api/sources/'+selected.value.id+'/tables/'+activeTable.value+'/columns/'+column,'DELETE');await loadColumns(activeTable.value)}catch(e){fail(e)}}
 onMounted(()=>void refresh());defineExpose({refresh});
 </script>
@@ -54,7 +59,13 @@ onMounted(()=>void refresh());defineExpose({refresh});
     <template v-else>
      <a-button type="link" @click="activeTable=''">← 返回数据表</a-button><h3>{{activeTable}} 的可读字段</h3>
      <div class="inline-entry"><a-input v-model:value="newColumn" placeholder="输入字段名"/><a-button type="primary" @click="addColumn">授权</a-button></div>
-     <div v-for="c in columns" :key="c.columnName" class="grant-row"><span>{{c.columnName}}</span><a-tag :color="c.enabled?'blue':'default'">{{c.enabled?'允许':'禁止'}}</a-tag><a-button v-if="c.enabled" type="text" danger @click="confirm('确认撤销字段授权？',()=>removeColumn(c.columnName))">撤销</a-button><a-button v-else type="link" @click="newColumn=c.columnName;addColumn()">恢复</a-button></div>
+     <a-table :data-source="columns" row-key="columnName" size="small" :pagination="false">
+  <a-table-column title="字段名" data-index="columnName"/>
+  <a-table-column title="AI 可读取"><template #default="{record}"><a-checkbox :checked="!!record.enabled" :disabled="true"/></template></a-table-column>
+  <a-table-column title="脱敏"><template #default="{record}"><a-checkbox :checked="!!record.masked" :disabled="!record.enabled" @change="toggleMask(record.columnName)"/></template></a-table-column>
+  <a-table-column title="操作"><template #default="{record}"><a-button v-if="record.enabled" type="link" danger @click="confirm('确认撤销字段授权？',()=>removeColumn(record.columnName))">撤销</a-button><a-button v-else type="link" @click="newColumn=record.columnName;addColumn()">恢复</a-button></template></a-table-column>
+ </a-table>
+ <p class="subtle">脱敏字段会以 [REDACTED] 返回，不能作为筛选或排序条件。</p>
     </template>
    </a-tab-pane>
    <a-tab-pane key="limit" tab="访问限制"><a-descriptions :column="1" bordered size="small">

@@ -46,7 +46,7 @@ onMounted(()=>void refresh());defineExpose({refresh});
   <a-descriptions-item label="实际返回">{{detail.returnedRows??'—'}}</a-descriptions-item>
   <a-descriptions-item label="耗时">{{detail.durationMs==null?'—':detail.durationMs+' ms'}}</a-descriptions-item>
   <a-descriptions-item label="规则动作">{{detail.action}}</a-descriptions-item>
-  <a-descriptions-item label="命中规则">{{detail.ruleId||'未匹配规则（默认拒绝）'}}</a-descriptions-item>
+  <a-descriptions-item label="命中规则">{{detail.ruleName||'未匹配规则（默认拒绝）'}}</a-descriptions-item>
   <a-descriptions-item label="审批人">{{detail.approverName||'—'}}</a-descriptions-item>
   <a-descriptions-item label="执行结果"><a-tag :color="stateColor(detail.status)">{{stateName[detail.status]||detail.status}}</a-tag></a-descriptions-item>
  </a-descriptions>

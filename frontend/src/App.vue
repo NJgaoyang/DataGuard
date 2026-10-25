@@ -100,7 +100,7 @@ onMounted(()=>void start());
    <div class="workspace-head"><h1>{{title}}</h1><a-button @click="refresh"><ReloadOutlined/> 刷新</a-button></div>
    <Dashboard v-if="page==='dashboard'" :key="'dashboard'+reloadKey" @navigate="navigate"/>
    <Sources v-else-if="page==='sources'&&admin" :key="'sources'+reloadKey"/>
-   <Agents v-else-if="page==='agents'" :key="'agents'+reloadKey"/>
+   <Agents v-else-if="page==='agents'" :key="'agents'+reloadKey" :user="user"/>
    <Rules v-else-if="page==='rules'&&admin" :key="'rules'+reloadKey"/>
    <Approvals v-else-if="page==='approvals'" :key="'approvals'+reloadKey" :user="user"/>
    <Records v-else-if="page==='records'" :key="'records'+reloadKey"/>

@@ -35,7 +35,8 @@ class AgentApi {
   String filter=admin(auth)?"":" WHERE owner.username=?";
   String q="""
    SELECT a.id,a.name,a.enabled,a.expires_at AS expiresAt,a.revoked_at AS revokedAt,
-     a.created_at AS createdAt,owner.id AS ownerId,owner.display_name AS ownerName
+     a.created_at AS createdAt,owner.id AS ownerId,owner.display_name AS ownerName,
+     (SELECT MAX(r.created_at) FROM dg_requests r WHERE r.agent_id=a.id) AS lastAccess
    FROM dg_agents a JOIN dg_users owner ON owner.id=a.owner_user_id
    """+filter+" ORDER BY a.created_at DESC LIMIT 300";
   return admin(auth)?db.queryForList(q):db.queryForList(q,auth.getName());

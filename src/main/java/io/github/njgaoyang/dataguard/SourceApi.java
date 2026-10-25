@@ -60,15 +60,18 @@ class SourceApi {
   audit.log(auth.getName(),"TABLE_ALLOWED",null,source+"/"+table,"SUCCESS","");
   return Map.of("updated",true);
  }
+ @org.springframework.transaction.annotation.Transactional
  @DeleteMapping("/{id}/tables/{table}") Map<String,Object> removeTable(Authentication auth,@PathVariable String id,@PathVariable String table){
   Guard.admin(auth);String source=Guard.id(id),name=Guard.identifier(table);
+  db.update("DELETE FROM dg_agent_columns WHERE source_id=? AND table_name=?",source,name);
+  db.update("DELETE FROM dg_agent_tables WHERE source_id=? AND table_name=?",source,name);
   db.update("UPDATE dg_source_tables SET enabled=0 WHERE source_id=? AND table_name=?",source,name);
   audit.log(auth.getName(),"TABLE_REVOKED",null,source+"/"+name,"SUCCESS","");
   return Map.of("updated",true);
  }
  @GetMapping("/{id}/tables/{table}/columns") List<Map<String,Object>> columns(Authentication auth,@PathVariable String id,@PathVariable String table){
   Guard.admin(auth);
-  return db.queryForList("SELECT column_name AS columnName,enabled FROM dg_source_columns WHERE source_id=? AND table_name=? ORDER BY column_name",Guard.id(id),Guard.identifier(table));
+  return db.queryForList("SELECT column_name AS columnName,enabled,masked FROM dg_source_columns WHERE source_id=? AND table_name=? ORDER BY column_name",Guard.id(id),Guard.identifier(table));
  }
  @PostMapping("/{id}/tables/{table}/columns") Map<String,Object> column(Authentication auth,@PathVariable String id,@PathVariable String table,@RequestBody Grant in){
   Guard.admin(auth);String source=Guard.id(id),name=Guard.identifier(table),column=Guard.identifier(in.name());
@@ -76,10 +79,20 @@ class SourceApi {
   audit.log(auth.getName(),"COLUMN_ALLOWED",null,source+"/"+name+"/"+column,"SUCCESS","");
   return Map.of("updated",true);
  }
+ @org.springframework.transaction.annotation.Transactional
  @DeleteMapping("/{id}/tables/{table}/columns/{column}") Map<String,Object> removeColumn(Authentication auth,@PathVariable String id,@PathVariable String table,@PathVariable String column){
   Guard.admin(auth);String source=Guard.id(id),name=Guard.identifier(table),col=Guard.identifier(column);
+  db.update("DELETE FROM dg_agent_columns WHERE source_id=? AND table_name=? AND column_name=?",source,name,col);
   db.update("UPDATE dg_source_columns SET enabled=0 WHERE source_id=? AND table_name=? AND column_name=?",source,name,col);
   audit.log(auth.getName(),"COLUMN_REVOKED",null,source+"/"+name+"/"+col,"SUCCESS","");
+  return Map.of("updated",true);
+ }
+ @PostMapping("/{id}/tables/{table}/columns/{column}/mask")
+ Map<String,Object> toggleMask(Authentication auth,@PathVariable String id,@PathVariable String table,@PathVariable String column){
+  Guard.admin(auth);String source=Guard.id(id),name=Guard.identifier(table),col=Guard.identifier(column);
+  int n=db.update("UPDATE dg_source_columns SET masked=NOT masked WHERE source_id=? AND table_name=? AND column_name=? AND enabled=1",source,name,col);
+  if(n!=1)throw new ResponseStatusException(HttpStatus.NOT_FOUND,"Authorized field required");
+  audit.log(auth.getName(),"COLUMN_MASK_CHANGED",null,source+"/"+name+"/"+col,"SUCCESS","");
   return Map.of("updated",true);
  }
  Map<String,Object> sourceForRead(String sourceId){

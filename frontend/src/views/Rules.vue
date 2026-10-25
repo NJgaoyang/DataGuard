@@ -1,17 +1,25 @@
 <script setup lang="ts">
 import {computed,onMounted,ref} from 'vue';
 import {api,match,page,fail,confirm,type DataRow} from '../api';
-const rows=ref<DataRow[]>([]),sources=ref<DataRow[]>([]),agents=ref<DataRow[]>([]),approvers=ref<DataRow[]>([]),search=ref(''),selected=ref<DataRow|null>(null),createOpen=ref(false),busy=ref(false);
+const rows=ref<DataRow[]>([]),sources=ref<DataRow[]>([]),agents=ref<DataRow[]>([]),approvers=ref<DataRow[]>([]),search=ref(''),selected=ref<DataRow|null>(null),createOpen=ref(false),editId=ref<string|null>(null),busy=ref(false);
 const defaultRule=()=>({name:'',sourceId:'',agentId:'',tableName:'*',columnName:'',minRows:1,maxRows:50,action:'ALLOW',priority:100,approverId:''});
 const form=ref(defaultRule());
 const labels:Record<string,string>={ALLOW:'直接放行',APPROVAL:'需要审批',DENY:'直接拒绝'};
 const filtered=computed(()=>rows.value.filter(x=>match(x,search.value,['name','tableName','sourceName','agentName'])));
 async function refresh(){try{rows.value=await api('/api/rules')}catch(e){fail(e)}}
-async function openCreate(){try{[sources.value,agents.value,approvers.value]=await Promise.all([api('/api/sources'),api('/api/agents'),api('/api/approvers')]);form.value=defaultRule();createOpen.value=true}catch(e){fail(e)}}
+async function loadOptions(){[sources.value,agents.value,approvers.value]=await Promise.all([api('/api/sources'),api('/api/agents'),api('/api/approvers')]);}
+async function openCreate(){try{await loadOptions();form.value=defaultRule();editId.value=null;createOpen.value=true}catch(e){fail(e)}}
+async function edit(row:DataRow){try{
+ await loadOptions();editId.value=row.id;
+ form.value={name:row.name,sourceId:row.sourceId||'',agentId:row.agentId||'',tableName:row.tableName,
+  columnName:row.columnName||'',minRows:Number(row.minRows),maxRows:Number(row.maxRows),
+  action:row.action,priority:Number(row.priority),approverId:row.approverId||''};
+ selected.value=null;createOpen.value=true;
+ }catch(e){fail(e)}}
 async function save(){try{
  if(!form.value.name.trim())throw Error('请输入规则名称');
  if(form.value.action==='APPROVAL'&&!form.value.approverId)throw Error('请选择审批人');
- busy.value=true;await api('/api/rules','POST',{...form.value,sourceId:form.value.sourceId||null,agentId:form.value.agentId||null,
+ busy.value=true;await api(editId.value?'/api/rules/'+editId.value:'/api/rules',editId.value?'PUT':'POST',{...form.value,sourceId:form.value.sourceId||null,agentId:form.value.agentId||null,
   columnName:form.value.columnName||null,approverId:form.value.action==='APPROVAL'?form.value.approverId:null});
  createOpen.value=false;await refresh();
  }catch(e){fail(e)}finally{busy.value=false}}
@@ -41,8 +49,8 @@ const condition=(row:DataRow)=>'读取 '+row.minRows+'～'+row.maxRows+' 行'+(r
  <a-descriptions-item label="动作">{{labels[selected.action]}}</a-descriptions-item>
  <a-descriptions-item v-if="selected.action==='APPROVAL'" label="审批人">{{selected.approverName}}</a-descriptions-item>
  </a-descriptions>
- <div class="drawer-actions"><a-button :danger="selected?.enabled" @click="selected&&confirm('确认变更规则状态？',toggleSelected)">{{selected?.enabled?'停用规则':'启用规则'}}</a-button></div></a-drawer>
- <a-modal v-model:open="createOpen" title="新建访问规则" ok-text="创建规则" :confirm-loading="busy" :width="610" @ok="save">
+ <div class="drawer-actions"><a-button type="primary" @click="selected&&edit(selected)">编辑规则</a-button><a-button :danger="selected?.enabled" @click="selected&&confirm('确认变更规则状态？',toggleSelected)">{{selected?.enabled?'停用规则':'启用规则'}}</a-button></div></a-drawer>
+ <a-modal v-model:open="createOpen" :title="editId?'编辑访问规则':'新建访问规则'" :ok-text="editId?'保存修改':'创建规则'" :confirm-loading="busy" :width="610" @ok="save">
  <a-form layout="vertical"><a-form-item label="规则名称" required><a-input v-model:value="form.name"/></a-form-item>
  <div class="form-grid">
  <a-form-item label="数据源"><a-select v-model:value="form.sourceId" :options="[{value:'',label:'全部数据源'},...sources.map(s=>({value:s.id,label:s.name}))]"/></a-form-item>

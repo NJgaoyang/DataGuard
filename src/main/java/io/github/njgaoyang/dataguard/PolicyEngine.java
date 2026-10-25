@@ -42,7 +42,7 @@ class PolicyEngine {
   List<String> locked=db.query("SELECT id FROM dg_agents WHERE id=? AND enabled=1 AND revoked_at IS NULL AND expires_at>NOW(3) FOR UPDATE",(rs,i)->rs.getString(1),agentId);
   if(locked.size()!=1)throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Agent is unavailable");
   List<Map<String,Object>> rules=db.queryForList("""
-   SELECT id,action,approver_id AS approverId,column_name AS columnName
+   SELECT id,action,approver_id AS approverId,column_name AS columnName,revision
    FROM dg_rules WHERE enabled=1 AND (source_id IS NULL OR source_id=?)
       AND (agent_id IS NULL OR agent_id=?) AND table_name IN ('*',?)
       AND min_rows<=? AND max_rows>=?
@@ -60,9 +60,10 @@ class PolicyEngine {
   if("APPROVAL".equals(action)){
    List<Map<String,Object>> existing=db.queryForList("""
     SELECT id,status FROM dg_requests WHERE agent_id=? AND query_hash=?
+      AND rule_id=? AND rule_revision=?
       AND status IN ('PENDING','APPROVED') AND expires_at>NOW(3)
     ORDER BY created_at DESC LIMIT 1 FOR UPDATE
-    """,agentId,hash);
+    """,agentId,hash,rule.get("id"),rule.get("revision"));
    if(!existing.isEmpty()){
     String id=String.valueOf(existing.get(0).get("id"));
     if("APPROVED".equals(existing.get(0).get("status"))){
@@ -77,16 +78,45 @@ class PolicyEngine {
   String status=switch(action){case "ALLOW"->"EXECUTING";case "APPROVAL"->"PENDING";default->"DENIED";};
   db.update("""
    INSERT INTO dg_requests(id,agent_id,owner_id,source_id,table_name,columns_csv,requested_rows,
-      query_hash,rule_id,action,status,approver_id,expires_at,reason)
-   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,DATE_ADD(NOW(3),INTERVAL 24 HOUR),?)
+      query_hash,rule_id,rule_revision,action,status,approver_id,expires_at,reason)
+   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,DATE_ADD(NOW(3),INTERVAL 24 HOUR),?)
    """,id,agentId,ownerId,source,table,String.join(",",columns),count,hash,
-     rule==null?null:rule.get("id"),action,status,approver,
+     rule==null?null:rule.get("id"),rule==null?null:rule.get("revision"),action,status,approver,
      "DENY".equals(action)?"Unmatched or prohibited access rule":null);
   if("DENY".equals(action))audit.log((String)agent.get("name"),"AGENT_READ",id,source+"/"+table,"DENIED","Denied by dynamic access rules");
   return new Verdict(action,id);
  }
- void complete(Verdict verdict,int rows,long time){
-  db.update("UPDATE dg_requests SET status='SUCCESS',returned_rows=?,duration_ms=?,finished_at=NOW(3) WHERE id=? AND status='EXECUTING'",rows,time,verdict.id());
+ /**
+  * Re-evaluate after JDBC I/O: newly published DENY, revoked rule, or a revised rule
+  * must prevent returning buffered results, including previously approved queries.
+  */
+ void verifyStillAllowed(Verdict verdict,Map<String,Object> agent,String source,String table,
+                         List<String> accessedColumns,int requestedRows){
+  List<Map<String,Object>> current=db.queryForList("""
+   SELECT r.id,r.action,r.revision,r.column_name AS columnName FROM dg_rules r
+   WHERE r.enabled=1 AND (r.source_id IS NULL OR r.source_id=?)
+     AND (r.agent_id IS NULL OR r.agent_id=?) AND r.table_name IN ('*',?)
+     AND r.min_rows<=? AND r.max_rows>=?
+   ORDER BY CASE r.action WHEN 'DENY' THEN 0 WHEN 'APPROVAL' THEN 1 ELSE 2 END,r.priority,r.id
+   """,source,agent.get("id"),table,requestedRows,requestedRows);
+  Map<String,Object> winner=current.stream().filter(r->r.get("columnName")==null||
+    accessedColumns.contains(String.valueOf(r.get("columnName")))).findFirst().orElse(null);
+  List<Map<String,Object>> request=db.queryForList(
+   "SELECT rule_id AS ruleId,rule_revision AS ruleRevision,action,status FROM dg_requests WHERE id=?",verdict.id());
+  if(winner==null||request.size()!=1||!"EXECUTING".equals(request.get(0).get("status"))||
+     !Objects.equals(winner.get("id"),request.get(0).get("ruleId"))||
+     !Objects.equals(((Number)winner.get("revision")).intValue(),((Number)request.get(0).get("ruleRevision")).intValue())||
+     !Objects.equals(winner.get("action"),request.get(0).get("action"))||
+     "DENY".equals(winner.get("action")))
+   throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Access policy changed while reading");
+ }
+ @Transactional
+ public void complete(Verdict verdict,int rows,long time,String actor,String resource){
+  int updated=db.update(
+   "UPDATE dg_requests SET status='SUCCESS',returned_rows=?,duration_ms=?,finished_at=NOW(3) WHERE id=? AND status='EXECUTING'",
+    rows,time,verdict.id());
+  if(updated!=1)throw new ResponseStatusException(HttpStatus.CONFLICT,"Request cannot be completed");
+  audit.log(actor,"AGENT_READ",verdict.id(),resource,"SUCCESS","rows="+rows+" durationMs="+time);
  }
  void fail(Verdict verdict){
   if(verdict!=null&&"ALLOW".equals(verdict.action()))
@@ -118,7 +148,7 @@ class ControlApi {
   return db.queryForList("""
    SELECT r.id,r.name,r.source_id AS sourceId,s.name AS sourceName,r.agent_id AS agentId,
      a.name AS agentName,r.table_name AS tableName,r.column_name AS columnName,
-     r.min_rows AS minRows,r.max_rows AS maxRows,r.action,r.priority,r.enabled,
+     r.min_rows AS minRows,r.max_rows AS maxRows,r.action,r.priority,r.revision,r.enabled,
      u.display_name AS approverName,r.approver_id AS approverId
    FROM dg_rules r LEFT JOIN dg_sources s ON s.id=r.source_id
     LEFT JOIN dg_agents a ON a.id=r.agent_id LEFT JOIN dg_users u ON u.id=r.approver_id
@@ -147,11 +177,46 @@ class ControlApi {
   audit.log(auth.getName(),"RULE_CREATED",null,id,"SUCCESS",in.action());
   return Map.of("id",id);
  }
- @PostMapping("/rules/{id}/toggle") Map<String,Object> toggle(Authentication auth,@PathVariable String id){
+ @PutMapping("/rules/{id}")
+ @Transactional
+ public Map<String,Object> updateRule(Authentication auth,@PathVariable String id,@RequestBody RuleInput in){
   Guard.admin(auth);
-  if(db.update("UPDATE dg_rules SET enabled=NOT enabled WHERE id=?",Guard.id(id))!=1)
+  if(in==null||in.minRows()==null||in.maxRows()==null||in.priority()==null||in.minRows()<1||
+     in.maxRows()>200||in.maxRows()<in.minRows()||in.priority()<1||in.priority()>10000||
+     !Set.of("ALLOW","APPROVAL","DENY").contains(in.action()))
+    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid rule");
+  String safe=Guard.id(id),table="*".equals(in.tableName())?"*":Guard.identifier(in.tableName());
+  String source=Guard.nullableId(in.sourceId()),agent=Guard.nullableId(in.agentId());
+  String approver=Guard.nullableId(in.approverId());
+  if("APPROVAL".equals(in.action())){
+   if(approver==null||db.queryForObject("SELECT COUNT(*) FROM dg_users WHERE id=? AND enabled=1 AND must_change_password=0 AND role_code IN ('APPROVER','ADMIN')",Integer.class,approver)!=1)
+    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Active internal approver required");
+  }else if(approver!=null)throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Reviewer only allowed on approval rules");
+  String column=in.columnName()==null||in.columnName().isBlank()?null:Guard.identifier(in.columnName());
+  int changed=db.update("""
+    UPDATE dg_rules SET name=?,source_id=?,agent_id=?,table_name=?,column_name=?,
+      min_rows=?,max_rows=?,action=?,approver_id=?,priority=?,revision=revision+1 WHERE id=?
+    """,Guard.required(in.name(),120),source,agent,table,column,in.minRows(),in.maxRows(),
+    in.action(),approver,in.priority(),safe);
+  if(changed!=1)throw new ResponseStatusException(HttpStatus.NOT_FOUND,"Rule unavailable");
+  db.update("""
+    UPDATE dg_requests SET status='REJECTED',reason='Access rule was revised',decided_at=NOW(3)
+    WHERE rule_id=? AND status IN ('PENDING','APPROVED')
+    """,safe);
+  audit.log(auth.getName(),"RULE_UPDATED",null,safe,"SUCCESS","");
+  return Map.of("updated",true);
+ }
+ @PostMapping("/rules/{id}/toggle")
+ @Transactional
+ public Map<String,Object> toggle(Authentication auth,@PathVariable String id){
+  Guard.admin(auth);String safe=Guard.id(id);
+  if(db.update("UPDATE dg_rules SET enabled=NOT enabled,revision=revision+1 WHERE id=?",safe)!=1)
    throw new ResponseStatusException(HttpStatus.NOT_FOUND);
-  audit.log(auth.getName(),"RULE_TOGGLED",null,id,"SUCCESS","");
+  db.update("""
+    UPDATE dg_requests SET status='REJECTED',reason='Access rule status changed',decided_at=NOW(3)
+    WHERE rule_id=? AND status IN ('PENDING','APPROVED')
+    """,safe);
+  audit.log(auth.getName(),"RULE_TOGGLED",null,safe,"SUCCESS","");
   return Map.of("updated",true);
  }
  @GetMapping("/requests") List<Map<String,Object>> requests(Authentication auth,@RequestParam(defaultValue="all") String scope){
@@ -169,10 +234,11 @@ class ControlApi {
      q.requested_rows AS requestedRows,q.returned_rows AS returnedRows,q.duration_ms AS durationMs,
      q.status,q.action,q.reason,q.rule_id AS ruleId,q.source_id AS sourceId,s.name AS sourceName,
      a.name AS agentName,owner.username AS ownerUsername,owner.display_name AS requesterName,
-     reviewer.display_name AS approverName,reviewer.username AS approverUsername
+     reviewer.display_name AS approverName,reviewer.username AS approverUsername,rule.name AS ruleName
    FROM dg_requests q JOIN dg_agents a ON a.id=q.agent_id
    JOIN dg_sources s ON s.id=q.source_id JOIN dg_users owner ON owner.id=q.owner_id
    LEFT JOIN dg_users reviewer ON reviewer.id=q.approver_id
+   LEFT JOIN dg_rules rule ON rule.id=q.rule_id
    """+conditions+" ORDER BY q.created_at DESC LIMIT 300";
   return db.queryForList(sql,params.toArray());
  }

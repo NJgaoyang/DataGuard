@@ -140,7 +140,7 @@ class McpGateway {
     ORDER BY t.table_name
     """,agentId,Guard.id(str(args,"sourceId")));
    case "describe_table" -> db.queryForList("""
-    SELECT ac.column_name AS columnName FROM dg_agent_columns ac
+    SELECT ac.column_name AS columnName,sc.masked FROM dg_agent_columns ac
     JOIN dg_agent_tables at ON at.agent_id=ac.agent_id AND at.source_id=ac.source_id AND at.table_name=ac.table_name
     JOIN dg_source_columns sc ON sc.source_id=ac.source_id AND sc.table_name=ac.table_name AND sc.column_name=ac.column_name
     JOIN dg_source_tables st ON st.source_id=ac.source_id AND st.table_name=ac.table_name
@@ -191,6 +191,9 @@ class McpGateway {
   if(sortColumn!=null)requested.add(sortColumn);
   // All visible, filter and sort fields require BOTH platform and Agent grants.
   authorizeColumns(agentId,sourceId,table,requested);
+  Set<String> masked=maskedColumns(sourceId,table);
+  if(filterColumn!=null&&masked.contains(filterColumn)||sortColumn!=null&&masked.contains(sortColumn))
+   throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Masked field cannot be used for filtering or sorting");
   Map<String,Object> source=sources.sourceForRead(sourceId);
   String host=String.valueOf(source.get("host"));
   if(!allowedHosts.contains(host))throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Source host not allowlisted");
@@ -218,7 +221,7 @@ class McpGateway {
        Map<String,Object> row=new LinkedHashMap<>();
        for(String column:columns){
         Object value=result.getObject(column);
-        row.put(column,value instanceof byte[]?"[REDACTED]":
+        row.put(column,masked.contains(column)||value instanceof byte[]?"[REDACTED]":
           value instanceof String text && text.length()>256?text.substring(0,256):value);
        }
        rows.add(row);
@@ -228,10 +231,16 @@ class McpGateway {
    }
    // Re-evaluate revocations after I/O and before releasing any values.
    authorizeColumns(agentId,sourceId,table,requested);
+   policy.verifyStillAllowed(verdict,agent,sourceId,table,requested.stream().sorted().toList(),limit);
+   // A newly masked field must not leak even if the policy changes during a slow read.
+   Set<String> currentMasked=maskedColumns(sourceId,table);
+   if(filterColumn!=null&&currentMasked.contains(filterColumn)||sortColumn!=null&&currentMasked.contains(sortColumn))
+    throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Field masking changed during read");
+   for(Map<String,Object> row:rows)for(String column:columns)
+    if(currentMasked.contains(column))row.put(column,"[REDACTED]");
    if(!allowedHosts.contains(host))throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Source host revoked");
    long ms=(System.nanoTime()-started)/1_000_000;
-   policy.complete(verdict,rows.size(),ms);
-   audit.log((String)agent.get("name"),"AGENT_READ",verdict.id(),sourceId+"/"+table,"SUCCESS","rows="+rows.size()+" durationMs="+ms);
+   policy.complete(verdict,rows.size(),ms,(String)agent.get("name"),sourceId+"/"+table);
    succeeded=true;
    return Map.of("requestId",verdict.id(),"status","SUCCESS","rowCount",rows.size(),"rows",rows);
   }catch(java.sql.SQLException ex){
@@ -241,6 +250,12 @@ class McpGateway {
    if(acquired)slots.release();
    if(!succeeded)policy.fail(verdict);
   }
+ }
+ private Set<String> maskedColumns(String source,String table){
+  return new HashSet<>(db.query("""
+   SELECT column_name FROM dg_source_columns
+   WHERE source_id=? AND table_name=? AND enabled=1 AND masked=1
+   """,(rs,i)->rs.getString(1),source,table));
  }
  private void authorizeColumns(String agentId,String source,String table,Set<String> requested){
   List<String> granted=db.query("""
