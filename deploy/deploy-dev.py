@@ -34,8 +34,8 @@ password=secret(passwordfile,lambda: secrets.token_hex(28))
 master=secret(keyfile,lambda: base64.b64encode(secrets.token_bytes(32)).decode("ascii"))
 first=secret(bootstrap,lambda: "Aa1!"+secrets.token_urlsafe(20))
 sql="""CREATE DATABASE IF NOT EXISTS dataguard_v1 CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
-CREATE USER IF NOT EXISTS 'dg_v1_app'@'%' IDENTIFIED BY '%s' REQUIRE SSL;
-ALTER USER 'dg_v1_app'@'%' IDENTIFIED BY '%s' REQUIRE SSL;
+CREATE USER IF NOT EXISTS 'dg_v1_app'@'%%' IDENTIFIED BY '%s' REQUIRE SSL;
+ALTER USER 'dg_v1_app'@'%%' IDENTIFIED BY '%s' REQUIRE SSL;
 GRANT SELECT,INSERT,UPDATE,DELETE,CREATE,ALTER,INDEX,REFERENCES ON dataguard_v1.* TO 'dg_v1_app'@'%%';
 FLUSH PRIVILEGES;"""%(password,password)
 subprocess.run([
