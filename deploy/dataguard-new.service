@@ -1,0 +1,24 @@
+[Unit]
+Description=DataGuard AI Read Gateway (development)
+After=network-online.target docker.service
+Wants=network-online.target
+[Service]
+Type=simple
+User=dataguard
+Group=dataguard
+WorkingDirectory=/opt/dataguard
+EnvironmentFile=/etc/dataguard-new/standalone.env
+ExecStart=/opt/dataguard-toolchain/java21/bin/java -XX:MaxRAMPercentage=65 -jar /opt/dataguard/app.jar
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=120
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/dataguard-new
+MemoryMax=1350M
+TasksMax=256
+[Install]
+WantedBy=multi-user.target
