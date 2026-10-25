@@ -124,15 +124,14 @@ class PolicyEngine {
  }
  Map<String,Object> status(Map<String,Object> agent,String id){
   List<Map<String,Object>> rows=db.queryForList("""
-   SELECT id,status,requested_rows AS requestedRows,returned_rows AS returnedRows,
+   SELECT id,CASE WHEN status IN ('PENDING','APPROVED') AND expires_at<=NOW(3)
+       THEN 'EXPIRED' ELSE status END AS status,
+     requested_rows AS requestedRows,returned_rows AS returnedRows,
      created_at AS createdAt,expires_at AS expiresAt
    FROM dg_requests WHERE id=? AND agent_id=?
    """,Guard.id(id),agent.get("id"));
   if(rows.size()!=1)throw new ResponseStatusException(HttpStatus.NOT_FOUND);
-  Map<String,Object> result=new LinkedHashMap<>(rows.get(0));
-  if("PENDING".equals(result.get("status"))&&
-    ((java.sql.Timestamp)result.get("expiresAt")).toInstant().isBefore(Instant.now()))result.put("status","EXPIRED");
-  return result;
+  return rows.get(0);
  }
 }
 @RestController
@@ -258,7 +257,9 @@ class ControlApi {
   Map<String,Object> req=rows.get(0);
   if(!req.get("approverId").equals(req.get("reviewerId"))||req.get("ownerId").equals(req.get("reviewerId")))
    throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Only assigned independent reviewer may decide");
-  if(!((java.sql.Timestamp)req.get("expiresAt")).toInstant().isAfter(Instant.now()))
+  Integer stillValid=db.queryForObject(
+    "SELECT COUNT(*) FROM dg_requests WHERE id=? AND expires_at>NOW(3)",Integer.class,safe);
+  if(stillValid==null||stillValid!=1)
    throw new ResponseStatusException(HttpStatus.CONFLICT,"Approval expired");
   String result=action.equals("approve")?"APPROVED":"REJECTED";
   db.update("UPDATE dg_requests SET status=?,reason=?,decided_at=NOW(3) WHERE id=? AND status='PENDING'",result,in.reason().strip(),safe);
