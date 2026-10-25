@@ -15,6 +15,7 @@ async function save(){try{
   columnName:form.value.columnName||null,approverId:form.value.action==='APPROVAL'?form.value.approverId:null});
  createOpen.value=false;await refresh();
  }catch(e){fail(e)}finally{busy.value=false}}
+async function toggleSelected(){if(selected.value)await toggle(selected.value)}
 async function toggle(row:DataRow){try{await api('/api/rules/'+row.id+'/toggle','POST');selected.value=null;await refresh()}catch(e){fail(e)}}
 const condition=(row:DataRow)=>'读取 '+row.minRows+'～'+row.maxRows+' 行'+(row.columnName?' · '+row.columnName:'');
 </script>
@@ -40,7 +41,7 @@ const condition=(row:DataRow)=>'读取 '+row.minRows+'～'+row.maxRows+' 行'+(r
  <a-descriptions-item label="动作">{{labels[selected.action]}}</a-descriptions-item>
  <a-descriptions-item v-if="selected.action==='APPROVAL'" label="审批人">{{selected.approverName}}</a-descriptions-item>
  </a-descriptions>
- <div class="drawer-actions"><a-button :danger="selected?.enabled" @click="selected&&confirm('确认变更规则状态？',()=>toggle(selected))">{{selected?.enabled?'停用规则':'启用规则'}}</a-button></div></a-drawer>
+ <div class="drawer-actions"><a-button :danger="selected?.enabled" @click="selected&&confirm('确认变更规则状态？',toggleSelected)">{{selected?.enabled?'停用规则':'启用规则'}}</a-button></div></a-drawer>
  <a-modal v-model:open="createOpen" title="新建访问规则" ok-text="创建规则" :confirm-loading="busy" :width="610" @ok="save">
  <a-form layout="vertical"><a-form-item label="规则名称" required><a-input v-model:value="form.name"/></a-form-item>
  <div class="form-grid">

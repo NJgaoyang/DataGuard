@@ -3,6 +3,7 @@ import {computed,onMounted,ref} from 'vue';
 import {api,stamp,match,page,fail,confirm,type DataRow} from '../api';
 const rows=ref<DataRow[]>([]),sources=ref<DataRow[]>([]),users=ref<DataRow[]>([]),selected=ref<DataRow|null>(null),search=ref(''),tab=ref('grants'),secret=ref(''),createOpen=ref(false),form=ref({name:'',ownerId:'',validDays:30}),grants=ref<DataRow>({tables:[],columns:[]}),
  sourceId=ref(''),tableName=ref(''),columnName=ref(''),expiry=ref(30);
+const mcpEndpoint=window.location.origin+'/mcp';
 const filtered=computed(()=>rows.value.filter(r=>match(r,search.value,['name','ownerName'])));
 const status=(r:DataRow)=>r.revokedAt||!r.enabled?'已停用':new Date(r.expiresAt).getTime()<Date.now()?'已过期':'正常';
 async function refresh(){try{rows.value=await api('/api/agents')}catch(e){fail(e)}}
@@ -33,7 +34,7 @@ onMounted(()=>void refresh());defineExpose({refresh});
      <a-descriptions-item label="Agent ID">{{selected.id}}</a-descriptions-item>
      <a-descriptions-item label="所属用户">{{selected.ownerName}}</a-descriptions-item>
      <a-descriptions-item label="到期时间">{{stamp(selected.expiresAt)}}</a-descriptions-item>
-     <a-descriptions-item label="MCP 地址">{{location.origin}}/mcp</a-descriptions-item>
+     <a-descriptions-item label="MCP 地址">{{mcpEndpoint}}</a-descriptions-item>
     </a-descriptions><div class="drawer-actions"><a-button danger @click="confirm('撤销后令牌立即失效，确认？',revoke)">撤销 Agent</a-button></div></a-tab-pane>
     <a-tab-pane key="grants" tab="访问授权">
      <div class="drawer-section-title">可访问的数据表</div>

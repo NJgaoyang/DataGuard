@@ -10,7 +10,7 @@ const filtered=computed(()=>rows.value.filter(r=>match(r,search.value,['id','age
  &&(source.value==='all'||r.sourceName===source.value)
  &&(!date.value||(String(r.createdAt).slice(0,10)>=date.value[0]&&String(r.createdAt).slice(0,10)<=date.value[1]))));
 async function refresh(){try{rows.value=await api('/api/requests?scope=all')}catch(e){fail(e)}}
-const fmt=(s:string)=>s?.length>10?s.slice(0,10):s;
+function onRangeChange(_values:unknown,dateStrings:string[]){date.value=dateStrings?.[0]&&dateStrings?.[1]?[dateStrings[0],dateStrings[1]]:null;}
 onMounted(()=>void refresh());defineExpose({refresh});
 </script>
 <template>
@@ -19,7 +19,7 @@ onMounted(()=>void refresh());defineExpose({refresh});
   <a-select v-model:value="status" style="width:135px" :options="[{value:'all',label:'全部状态'},...Object.entries(stateName).map(([value,label])=>({value,label}))]"/>
   <a-select v-model:value="agent" style="width:140px" :options="[{value:'all',label:'全部 Agent'},...agents.map(v=>({value:v,label:v}))]"/>
   <a-select v-model:value="source" style="width:150px" :options="[{value:'all',label:'全部数据源'},...sources.map(v=>({value:v,label:v}))]"/>
-  <a-range-picker :value="date" format="YYYY-MM-DD" value-format="YYYY-MM-DD" @change="(_,s)=>date=s?.[0]&&s?.[1]?[s[0],s[1]]:null"/>
+  <a-range-picker :value="date" format="YYYY-MM-DD" value-format="YYYY-MM-DD" @change="onRangeChange"/>
   <a-input-search v-model:value="search" allow-clear class="search" placeholder="搜索表名或请求编号"/>
  </div>
  <a-table :data-source="filtered" row-key="id" :pagination="page" :scroll="{x:930}">
