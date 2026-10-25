@@ -38,6 +38,18 @@ class GatewayMysqlIntegrationTest {
    .andExpect(status().isUnauthorized());
   mvc.perform(get("/api/csrf")).andExpect(status().isOk());
  }
+ @Test
+ @Transactional
+ void disabledOrRoleChangedSessionIsImmediatelyRejected() throws Exception {
+  String id=UUID.randomUUID().toString();
+  String username="disabled_"+id.substring(0,8);
+  db.update("INSERT INTO dg_users(id,username,display_name,password_hash,role_code,enabled,must_change_password) VALUES(?,?,?,?,?,0,0)",
+    id,username,"Disabled admin","test","ADMIN");
+  var identity=org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user(username).roles("ADMIN");
+  mvc.perform(get("/api/sources").with(identity)).andExpect(status().isUnauthorized());
+  db.update("UPDATE dg_users SET enabled=1,role_code='READER' WHERE id=?",id);
+  mvc.perform(get("/api/sources").with(identity)).andExpect(status().isUnauthorized());
+ }
  @Test void initialPasswordMustBlockAdministrativeApi() throws Exception {
   mvc.perform(get("/api/sources").with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user("admin").roles("ADMIN")))
     .andExpect(status().is(428));

@@ -62,10 +62,25 @@ class InitialPasswordGuard extends OncePerRequestFilter {
  @Override protected void doFilterInternal(HttpServletRequest req,HttpServletResponse res,FilterChain chain) throws ServletException,IOException {
   String path=req.getRequestURI();
   Authentication auth=org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
-  if(path.startsWith("/api/")&&!List.of("/api/csrf","/api/session","/api/password").contains(path)
+  if(path.startsWith("/api/")&&!"/api/csrf".equals(path)
       &&auth!=null&&auth.isAuthenticated()&&!(auth instanceof org.springframework.security.authentication.AnonymousAuthenticationToken)){
-   Boolean required=db.queryForObject("SELECT must_change_password FROM dg_users WHERE username=?",Boolean.class,auth.getName());
-   if(Boolean.TRUE.equals(required)){res.sendError(428,"Password change required");return;}
+   java.util.List<Map<String,Object>> users=db.queryForList(
+     "SELECT enabled,must_change_password,role_code FROM dg_users WHERE username=?",auth.getName());
+   if(users.size()!=1){
+    if(req.getSession(false)!=null)req.getSession(false).invalidate();
+    res.sendError(401,"Account unavailable");return;
+   }
+   Map<String,Object> user=users.get(0);
+   boolean valid=Boolean.TRUE.equals(user.get("enabled"));
+   String role=String.valueOf(user.get("role_code"));
+   boolean currentRole=auth.getAuthorities().stream().anyMatch(a->("ROLE_"+role).equals(a.getAuthority()));
+   if(!valid||!currentRole){
+    if(req.getSession(false)!=null)req.getSession(false).invalidate();
+    res.sendError(401,"Account disabled or role changed");return;
+   }
+   if(!List.of("/api/session","/api/password").contains(path)&&Boolean.TRUE.equals(user.get("must_change_password"))){
+    res.sendError(428,"Password change required");return;
+   }
   }
   chain.doFilter(req,res);
  }
