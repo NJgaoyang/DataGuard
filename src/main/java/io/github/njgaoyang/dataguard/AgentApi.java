@@ -70,6 +70,22 @@ class AgentApi {
    "tables",db.queryForList("SELECT source_id AS sourceId,table_name AS tableName FROM dg_agent_tables WHERE agent_id=? ORDER BY table_name",Guard.id(id)),
    "columns",db.queryForList("SELECT source_id AS sourceId,table_name AS tableName,column_name AS columnName FROM dg_agent_columns WHERE agent_id=? ORDER BY table_name,column_name",Guard.id(id)));
  }
+ @GetMapping("/{id}/usage") Map<String,Object> usage(Authentication auth,@PathVariable String id){
+  own(auth,id);String agent=Guard.id(id);
+  Map<String,Object> stats=db.queryForMap("""
+    SELECT COUNT(*) AS requests,
+     COALESCE(SUM(status='SUCCESS'),0) AS completed,
+     COALESCE(SUM(status IN ('DENIED','REJECTED')),0) AS denied,
+     MAX(created_at) AS lastAccess
+    FROM dg_requests WHERE agent_id=?
+    """,agent);
+  List<Map<String,Object>> recent=db.queryForList("""
+    SELECT id,created_at AS createdAt,table_name AS tableName,status,
+     requested_rows AS requestedRows,returned_rows AS returnedRows
+    FROM dg_requests WHERE agent_id=? ORDER BY created_at DESC LIMIT 10
+    """,agent);
+  return Map.of("stats",stats,"recent",recent);
+ }
  @PostMapping("/{id}/tables") Map<String,Object> grantTable(Authentication auth,@PathVariable String id,@RequestBody TableGrant input){
   Guard.admin(auth);String agent=Guard.id(id),source=Guard.id(input.sourceId()),table=Guard.identifier(input.tableName());
   Integer allowed=db.queryForObject("""

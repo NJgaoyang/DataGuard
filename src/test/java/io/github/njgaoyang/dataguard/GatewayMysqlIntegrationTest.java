@@ -44,6 +44,14 @@ class GatewayMysqlIntegrationTest {
  }
  @Test
  @Transactional
+ void adminCanListRulesAndRequestsAgainstRealMySql() throws Exception {
+  db.update("UPDATE dg_users SET must_change_password=0 WHERE username='admin'");
+  var admin=org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user("admin").roles("ADMIN");
+  mvc.perform(get("/api/rules").with(admin)).andExpect(status().isOk());
+  mvc.perform(get("/api/requests?scope=all").with(admin)).andExpect(status().isOk());
+ }
+ @Test
+ @Transactional
  void revokingPlatformColumnNeverResurrectsOldAgentGrant(){
   String source=UUID.randomUUID().toString(),owner=UUID.randomUUID().toString(),agent=UUID.randomUUID().toString();
   db.update("INSERT INTO dg_users(id,username,display_name,password_hash,role_code,must_change_password) VALUES(?,?,?,?,?,0)",

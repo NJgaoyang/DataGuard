@@ -1,14 +1,16 @@
 <script setup lang="ts">
-import {computed,onMounted,ref} from 'vue';
+import {computed,onMounted,ref,watch} from 'vue';
 import {api,stamp,match,page,fail,confirm,type DataRow,type User} from '../api';
 const props=defineProps<{user:User}>();
 const rows=ref<DataRow[]>([]),sources=ref<DataRow[]>([]),users=ref<DataRow[]>([]),selected=ref<DataRow|null>(null),search=ref(''),tab=ref('grants'),secret=ref(''),createOpen=ref(false),form=ref({name:'',ownerId:'',validDays:30}),grants=ref<DataRow>({tables:[],columns:[]}),
- sourceId=ref(''),tableName=ref(''),columnName=ref(''),expiry=ref(30);
+ sourceId=ref(''),tableName=ref(''),columnName=ref(''),expiry=ref(30),usage=ref<DataRow>({stats:{},recent:[]});
 const mcpEndpoint=window.location.origin+'/mcp';
 const filtered=computed(()=>rows.value.filter(r=>match(r,search.value,['name','ownerName'])));
 const status=(r:DataRow)=>r.revokedAt||!r.enabled?'已停用':new Date(r.expiresAt).getTime()<Date.now()?'已过期':'正常';
 async function refresh(){try{rows.value=await api('/api/agents')}catch(e){fail(e)}}
-async function open(row:DataRow){selected.value=row;tab.value='grants';try{grants.value=await api('/api/agents/'+row.id+'/grants');if(props.user.roleCode==='ADMIN')sources.value=await api('/api/sources')}catch(e){fail(e)}}
+async function open(row:DataRow){selected.value=row;tab.value='grants';usage.value={stats:{},recent:[]};try{grants.value=await api('/api/agents/'+row.id+'/grants');if(props.user.roleCode==='ADMIN')sources.value=await api('/api/sources')}catch(e){fail(e)}}
+async function loadUsage(){if(!selected.value)return;try{usage.value=await api('/api/agents/'+selected.value.id+'/usage')}catch(e){fail(e)}}
+watch(tab,next=>{if(next==='usage')void loadUsage()});
 async function openCreate(){try{if(props.user.roleCode==='ADMIN')users.value=await api('/api/users');form.value={name:'',ownerId:'',validDays:30};createOpen.value=true}catch(e){fail(e)}}
 async function save(){try{const data=await api<DataRow>('/api/agents','POST',{...form.value,ownerId:form.value.ownerId||null});createOpen.value=false;secret.value=data.token;await refresh()}catch(e){fail(e)}}
 async function revoke(){if(!selected.value)return;try{await api('/api/agents/'+selected.value.id+'/revoke','POST');selected.value=null;await refresh()}catch(e){fail(e)}}
@@ -49,7 +51,21 @@ onMounted(()=>void refresh());defineExpose({refresh});
       <a-button type="primary" @click="grantColumn">授权该字段</a-button></a-form>
      <p class="subtle">Agent 只能读取平台白名单与自身授权的交集。</p>
     </a-tab-pane>
-    <a-tab-pane key="usage" tab="使用情况"><a-empty description="访问情况请在访问记录中按 Agent 查询"/></a-tab-pane>
+    <a-tab-pane key="usage" tab="使用情况">
+ <a-descriptions :column="1" bordered size="small">
+  <a-descriptions-item label="累计访问">{{usage.stats?.requests??0}} 次</a-descriptions-item>
+  <a-descriptions-item label="成功">{{usage.stats?.completed??0}} 次</a-descriptions-item>
+  <a-descriptions-item label="已拒绝">{{usage.stats?.denied??0}} 次</a-descriptions-item>
+  <a-descriptions-item label="最近访问">{{stamp(usage.stats?.lastAccess)}}</a-descriptions-item>
+ </a-descriptions>
+ <div class="drawer-section-title" style="margin-top:20px">最近访问</div>
+ <a-table :data-source="usage.recent||[]" row-key="id" size="small" :pagination="false">
+  <a-table-column title="时间"><template #default="{record}">{{stamp(record.createdAt)}}</template></a-table-column>
+  <a-table-column title="数据表" data-index="tableName"/>
+  <a-table-column title="行数" data-index="requestedRows"/>
+  <a-table-column title="结果" data-index="status"/>
+ </a-table>
+ </a-tab-pane>
    </a-tabs>
   </template>
  </a-drawer>

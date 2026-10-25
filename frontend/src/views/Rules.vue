@@ -26,6 +26,7 @@ async function save(){try{
 async function toggleSelected(){if(selected.value)await toggle(selected.value)}
 async function toggle(row:DataRow){try{await api('/api/rules/'+row.id+'/toggle','POST');selected.value=null;await refresh()}catch(e){fail(e)}}
 const condition=(row:DataRow)=>'读取 '+row.minRows+'～'+row.maxRows+' 行'+(row.columnName?' · '+row.columnName:'');
+onMounted(()=>void refresh());defineExpose({refresh});
 </script>
 <template>
  <section class="panel"><div class="panel-head"><h2>访问规则</h2><a-button type="primary" @click="openCreate">＋ 新建规则</a-button></div>

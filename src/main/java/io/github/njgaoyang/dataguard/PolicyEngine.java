@@ -234,11 +234,11 @@ class ControlApi {
      q.requested_rows AS requestedRows,q.returned_rows AS returnedRows,q.duration_ms AS durationMs,
      q.status,q.action,q.reason,q.rule_id AS ruleId,q.source_id AS sourceId,s.name AS sourceName,
      a.name AS agentName,owner.username AS ownerUsername,owner.display_name AS requesterName,
-     reviewer.display_name AS approverName,reviewer.username AS approverUsername,rule.name AS ruleName
+     reviewer.display_name AS approverName,reviewer.username AS approverUsername,access_rule.name AS ruleName
    FROM dg_requests q JOIN dg_agents a ON a.id=q.agent_id
    JOIN dg_sources s ON s.id=q.source_id JOIN dg_users owner ON owner.id=q.owner_id
    LEFT JOIN dg_users reviewer ON reviewer.id=q.approver_id
-   LEFT JOIN dg_rules rule ON rule.id=q.rule_id
+   LEFT JOIN dg_rules access_rule ON access_rule.id=q.rule_id
    """+conditions+" ORDER BY q.created_at DESC LIMIT 300";
   return db.queryForList(sql,params.toArray());
  }
