@@ -1,0 +1,117 @@
+package io.github.njgaoyang.dataguard;
+
+import java.util.Map;
+import java.util.List;
+import java.util.UUID;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.authentication.DisabledException;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.userdetails.User;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.HttpStatusEntryPoint;
+import org.springframework.security.web.csrf.CsrfToken;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.filter.OncePerRequestFilter;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
+
+@Configuration
+class SecurityConfig {
+ @Bean PasswordEncoder encoder(){return new BCryptPasswordEncoder(12);}
+ @Bean UserDetailsService users(JdbcTemplate db){
+  return username->{
+   List<Map<String,Object>> r=db.queryForList("SELECT password_hash,role_code,enabled FROM dg_users WHERE username=?",username);
+   if(r.size()!=1)throw new org.springframework.security.core.userdetails.UsernameNotFoundException("Account not found");
+   if(!((Boolean)r.get(0).get("enabled")))throw new DisabledException("Account disabled");
+   return User.withUsername(username).password((String)r.get(0).get("password_hash"))
+    .roles((String)r.get(0).get("role_code")).build();
+  };
+ }
+ @Bean SecurityFilterChain security(HttpSecurity http,InitialPasswordGuard guard) throws Exception {
+  http.csrf(csrf->csrf.ignoringRequestMatchers(PathPatternRequestMatcher.withDefaults().matcher("/mcp")))
+   .authorizeHttpRequests(auth->auth
+    .requestMatchers("/api/csrf","/mcp","/actuator/health","/assets/**","/","/index.html","/favicon.ico").permitAll()
+    .anyRequest().authenticated())
+   .exceptionHandling(e->e.defaultAuthenticationEntryPointFor(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED),
+      PathPatternRequestMatcher.withDefaults().matcher("/api/**")))
+   .formLogin(login->login.loginProcessingUrl("/login")
+     .successHandler((req,res,auth)->{res.setContentType("application/json");res.getWriter().write("{\"ok\":true}");})
+     .failureHandler((req,res,ex)->res.sendError(401,"Invalid credentials")).permitAll())
+   .logout(logout->logout.logoutUrl("/logout").logoutSuccessHandler((req,res,auth)->res.setStatus(204))
+     .invalidateHttpSession(true).deleteCookies("JSESSIONID"))
+   .sessionManagement(s->s.sessionFixation(f->f.migrateSession()))
+   .addFilterAfter(guard,org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter.class);
+  return http.build();
+ }
+}
+@org.springframework.stereotype.Component
+class InitialPasswordGuard extends OncePerRequestFilter {
+ private final JdbcTemplate db;
+ InitialPasswordGuard(JdbcTemplate db){this.db=db;}
+ @Override protected void doFilterInternal(HttpServletRequest req,HttpServletResponse res,FilterChain chain) throws ServletException,IOException {
+  String path=req.getRequestURI();
+  Authentication auth=org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+  if(path.startsWith("/api/")&&!List.of("/api/csrf","/api/session","/api/password").contains(path)
+      &&auth!=null&&auth.isAuthenticated()&&!(auth instanceof org.springframework.security.authentication.AnonymousAuthenticationToken)){
+   Boolean required=db.queryForObject("SELECT must_change_password FROM dg_users WHERE username=?",Boolean.class,auth.getName());
+   if(Boolean.TRUE.equals(required)){res.sendError(428,"Password change required");return;}
+  }
+  chain.doFilter(req,res);
+ }
+}
+@RestController
+class AuthApi {
+ private final JdbcTemplate db; private final PasswordEncoder encoder; private final Audit audit;
+ AuthApi(JdbcTemplate db,PasswordEncoder encoder,Audit audit){this.db=db;this.encoder=encoder;this.audit=audit;}
+ @GetMapping("/api/csrf") Map<String,String> csrf(CsrfToken token){return Map.of("token",token.getToken(),"header",token.getHeaderName());}
+ @GetMapping("/api/session") Map<String,Object> session(Authentication auth){
+  if(auth==null)throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
+  return db.queryForMap("SELECT username,display_name AS displayName,role_code AS roleCode,must_change_password AS mustChangePassword FROM dg_users WHERE username=?",auth.getName());
+ }
+ record ChangePassword(String currentPassword,String newPassword){}
+ @PostMapping("/api/password") Map<String,Object> password(Authentication auth,@RequestBody ChangePassword input,HttpServletRequest req){
+  if(input==null)throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
+  Guard.password(input.newPassword());
+  String hash=db.queryForObject("SELECT password_hash FROM dg_users WHERE username=?",String.class,auth.getName());
+  if(!encoder.matches(input.currentPassword(),hash))throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Current password incorrect");
+  db.update("UPDATE dg_users SET password_hash=?,must_change_password=0 WHERE username=?",encoder.encode(input.newPassword()),auth.getName());
+  audit.log(auth.getName(),"PASSWORD_CHANGED",null,"account","SUCCESS","");
+  req.getSession().invalidate();
+  return Map.of("reauthenticate",true);
+ }
+ @GetMapping("/api/users") List<Map<String,Object>> users(Authentication auth){
+  Guard.admin(auth);
+  return db.queryForList("SELECT id,username,display_name AS displayName,role_code AS roleCode,enabled,must_change_password AS mustChangePassword FROM dg_users ORDER BY created_at DESC");
+ }
+ record NewUser(String username,String displayName,String roleCode,String password){}
+ @PostMapping("/api/users") Map<String,Object> create(Authentication auth,@RequestBody NewUser in){
+  Guard.admin(auth);if(in==null||!in.username().matches("[A-Za-z0-9_.-]{3,64}"))throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
+  Guard.password(in.password());String id=UUID.randomUUID().toString();
+  db.update("INSERT INTO dg_users(id,username,display_name,password_hash,role_code) VALUES(?,?,?,?,?)",
+   id,in.username(),Guard.required(in.displayName(),100),encoder.encode(in.password()),Guard.role(in.roleCode()));
+  audit.log(auth.getName(),"USER_CREATED",null,id,"SUCCESS","");
+  return Map.of("id",id);
+ }
+ @PostMapping("/api/users/{id}/toggle") Map<String,Object> toggle(Authentication auth,@PathVariable String id){
+  Guard.admin(auth);String safe=Guard.id(id);
+  int n=db.update("UPDATE dg_users SET enabled=NOT enabled WHERE id=? AND username<>'admin' AND username<>?",safe,auth.getName());
+  if(n!=1)throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Cannot modify this user");
+  audit.log(auth.getName(),"USER_TOGGLED",null,safe,"SUCCESS","");
+  return Map.of("updated",true);
+ }
+ @GetMapping("/api/approvers") List<Map<String,Object>> approvers(Authentication auth){
+  return db.queryForList("SELECT id,username,display_name AS displayName FROM dg_users WHERE enabled=1 AND must_change_password=0 AND role_code IN ('ADMIN','APPROVER') ORDER BY display_name");
+ }
+}

@@ -1,0 +1,37 @@
+server:
+  address: ${DG_BIND:127.0.0.1}
+  port: ${DG_PORT:8080}
+  servlet:
+    session:
+      cookie:
+        http-only: true
+        same-site: strict
+        secure: ${DG_SECURE_COOKIE:true}
+      timeout: 8h
+spring:
+  application:
+    name: DataGuard
+  datasource:
+    url: ${DG_MYSQL_URL:jdbc:mysql://127.0.0.1:3306/dataguard?sslMode=VERIFY_IDENTITY}
+    username: ${DG_MYSQL_USER:dataguard}
+    password: ${DG_MYSQL_PASSWORD:}
+    hikari:
+      maximum-pool-size: 12
+  flyway:
+    enabled: true
+  web:
+    resources:
+      cache:
+        cachecontrol:
+          no-store: true
+dataguard:
+  encryption-key: ${DG_ENCRYPTION_KEY:}
+  allowed-source-hosts: ${DG_ALLOWED_SOURCE_HOSTS:}
+  max-rows: 200
+  query-timeout-seconds: 5
+  max-concurrency: 4
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
