@@ -33,7 +33,7 @@ onMounted(()=>void refresh());defineExpose({refresh});
  <a-table-column title="操作"><template #default="{record}"><a-button type="link" @click="detail=record">查看</a-button></template></a-table-column>
  </a-table>
 </section>
-<a-drawer :open="!!detail" title="访问详情" width="430" @close="detail=null">
+<a-drawer :mask="false" :open="!!detail" title="访问详情" width="430" @close="detail=null">
  <template v-if="detail">
  <a-descriptions :column="1" size="small" bordered>
   <a-descriptions-item label="请求编号">{{detail.id}}</a-descriptions-item>

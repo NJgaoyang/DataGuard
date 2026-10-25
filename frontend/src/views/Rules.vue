@@ -40,7 +40,7 @@ onMounted(()=>void refresh());defineExpose({refresh});
  <a-table-column title="优先级" data-index="priority"/>
  <a-table-column title="操作"><template #default="{record}"><a-button type="link" @click="selected=record">查看</a-button></template></a-table-column>
  </a-table></section>
- <a-drawer :open="!!selected" width="430" :title="selected?.name" @close="selected=null">
+ <a-drawer :mask="false" :open="!!selected" width="430" :title="selected?.name" @close="selected=null">
  <a-descriptions v-if="selected" :column="1" size="small" bordered>
  <a-descriptions-item label="规则名称">{{selected.name}}</a-descriptions-item>
  <a-descriptions-item label="优先级">{{selected.priority}}</a-descriptions-item>

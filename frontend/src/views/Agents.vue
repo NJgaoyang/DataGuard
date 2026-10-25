@@ -30,7 +30,7 @@ onMounted(()=>void refresh());defineExpose({refresh});
  <a-table-column title="最近访问"><template #default="{record}">{{stamp(record.lastAccess)}}</template></a-table-column>
  <a-table-column title="操作"><template #default="{record}"><a-button type="link" @click="open(record)">查看</a-button></template></a-table-column>
  </a-table></section>
- <a-drawer :open="!!selected" width="500" :title="selected?.name" @close="selected=null">
+ <a-drawer :mask="false" :open="!!selected" width="500" :title="selected?.name" @close="selected=null">
   <template v-if="selected"><div class="drawer-heading"><strong>{{selected.name}}</strong><a-tag :color="status(selected)==='正常'?'green':'red'">{{status(selected)}}</a-tag></div>
    <a-tabs v-model:active-key="tab">
     <a-tab-pane key="info" tab="基本信息"><a-descriptions :column="1" size="small" bordered>

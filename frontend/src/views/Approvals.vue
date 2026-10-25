@@ -34,7 +34,7 @@ onMounted(()=>void refresh());defineExpose({refresh});
   <a-table-column title="操作"><template #default="{record}"><a-button type="link" @click="detail=record;reason=''">{{record.approverUsername===user.username&&record.status==='PENDING'?'审批':'查看'}}</a-button></template></a-table-column>
  </a-table>
 </section>
-<a-drawer :open="!!detail" title="数据读取申请" width="465" @close="detail=null">
+<a-drawer :mask="false" :open="!!detail" title="数据读取申请" width="465" @close="detail=null">
  <template v-if="detail">
   <div class="drawer-heading"><strong>{{detail.tableName}} 数据读取申请</strong><a-tag :color="stateColor(detail.status)">{{stateName[detail.status]||detail.status}}</a-tag></div>
   <a-descriptions :column="1" size="small" bordered>

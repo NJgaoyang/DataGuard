@@ -50,7 +50,7 @@ onMounted(()=>void refresh());defineExpose({refresh});
   <a-table-column title="操作"><template #default="{record}"><a-button type="link" @click="open(record)">查看</a-button></template></a-table-column>
  </a-table>
 </section>
-<a-drawer :open="!!selected" title="数据源详情" width="495" @close="selected=null">
+<a-drawer :mask="false" :open="!!selected" title="数据源详情" width="495" @close="selected=null">
  <template v-if="selected">
   <div class="drawer-heading"><strong>{{selected.name}}</strong><a-tag :color="selected.enabled?'green':'red'">{{selected.enabled?'已开放':'已停用'}}</a-tag></div>
   <p class="subtle">{{selected.name}} · {{selected.type}} · {{selected.databaseName}}</p>
