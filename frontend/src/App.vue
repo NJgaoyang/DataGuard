@@ -82,7 +82,7 @@ function navigate(name:string,condition?:{status?:string;scope?:string}){
  page.value=name;menuOpen.value=false;
 }
 function openRecord(id:string){detailOpen.value=true;recordId.value=id;page.value='records';menuOpen.value=false}
-function refresh(){reloadKey.value++}
+function refresh(){detailOpen.value=false;recordId.value=null;reloadKey.value++}
 onMounted(()=>{void start();noticeInterval=setInterval(()=>{if(user.value)void fetchNotices()},60000)});
 </script>
 <template>
