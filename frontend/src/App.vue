@@ -3,7 +3,7 @@ import {computed,onMounted,reactive,ref} from 'vue';
 import {
  DashboardOutlined,DatabaseOutlined,RobotOutlined,SafetyCertificateOutlined,
  AuditOutlined,FileSearchOutlined,SettingOutlined,MenuOutlined,ReloadOutlined,
- BellOutlined,LogoutOutlined,DownOutlined,LockOutlined,SecurityScanOutlined
+ BellOutlined,LogoutOutlined,DownOutlined,LockOutlined,UserOutlined,EyeOutlined,EyeInvisibleOutlined,SecurityScanOutlined
 } from '@ant-design/icons-vue';
 import {api,fail,initCsrf,login,logout,type User} from './api';
 import Dashboard from './views/Dashboard.vue';
@@ -24,6 +24,7 @@ const user=ref<User|null>(null),ready=ref(false),page=ref('dashboard'),
   currentPassword=ref(''),nextPassword=ref(''),changeOpen=ref(false),passwordBusy=ref(false),
   menuOpen=ref(false),reloadKey=ref(0);
 const loginModel=reactive({username:'',password:''});
+const passwordVisible=ref(false);
 const items=[
  {id:'dashboard',label:'工作台',icon:DashboardOutlined},
  {id:'sources',label:'数据源',icon:DatabaseOutlined},
@@ -70,6 +71,7 @@ onMounted(()=>void start());
  <div v-if="!ready" class="app-loading"><a-spin size="large"/></div>
  <main v-else-if="!user" class="auth-layout">
   <section class="auth-brand-panel" aria-label="DataGuard 产品介绍">
+   <img class="auth-scene" src="/assets/dataguard-login-illustration.svg" alt="" aria-hidden="true"/>
    <div class="auth-brand-top">
     <img class="auth-brand-mark" src="/assets/dataguard-mark.svg" alt="DataGuard" width="54" height="59"/>
     <span class="auth-brand-copy"><strong class="brand-wordmark">Data<span>Guard</span></strong><small>数据守卫</small></span>
@@ -90,8 +92,8 @@ onMounted(()=>void start());
    <div class="auth-login-card">
     <div class="auth-login-heading"><h2>登录管理平台</h2><p>请输入管理员分配的账号和密码</p></div>
     <form class="auth-form" @submit.prevent="signin">
-     <div class="field"><label for="login-username">账号</label><input id="login-username" name="username" v-model="loginModel.username" autocomplete="username" placeholder="请输入账号" required/></div>
-     <div class="field"><label for="login-password">密码</label><input id="login-password" name="password" type="password" v-model="loginModel.password" autocomplete="current-password" placeholder="请输入密码" required/></div>
+     <div class="field"><label for="login-username">账号</label><div class="auth-field-control"><UserOutlined class="auth-field-icon"/><input id="login-username" name="username" v-model="loginModel.username" autocomplete="username" placeholder="请输入账号" required/></div></div>
+     <div class="field"><label for="login-password">密码</label><div class="auth-field-control"><LockOutlined class="auth-field-icon"/><input id="login-password" name="password" :type="passwordVisible?'text':'password'" v-model="loginModel.password" autocomplete="current-password" placeholder="请输入密码" required/><button type="button" class="auth-password-toggle" :aria-label="passwordVisible?'隐藏密码':'显示密码'" :aria-pressed="passwordVisible" @click="passwordVisible=!passwordVisible"><EyeOutlined v-if="passwordVisible"/><EyeInvisibleOutlined v-else/></button></div></div>
      <button class="auth-submit" type="submit" :disabled="loading">{{loading?'登录中…':'登录'}}</button>
      <div class="auth-error" role="alert" aria-live="polite">{{error}}</div>
     </form>

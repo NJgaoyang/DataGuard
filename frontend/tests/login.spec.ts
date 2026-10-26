@@ -21,8 +21,17 @@ test('login form actually submits, reports invalid credentials, and opens the wo
   body:JSON.stringify({stats:{requests:0,pending:0,denied:0,success:0},recent:[]})}));
  await page.goto('/');
  await expect(page.locator('.auth-layout')).toBeVisible();
- await expect(page.locator('.auth-brand-panel')).toHaveCSS('background-color','rgb(224, 248, 243)');
+ await expect(page.locator('.auth-brand-panel')).toHaveCSS('background-color','rgb(242, 247, 255)');
  await expect(page.locator('.auth-brand-mark')).toHaveJSProperty('naturalWidth',150);
+ await expect(page.locator('.auth-scene')).toHaveJSProperty('naturalWidth',465);
+ await expect(page.locator('.auth-login-card')).toHaveCSS('background-color','rgb(255, 255, 255)');
+ await expect(page.locator('.auth-password-toggle')).toHaveAttribute('aria-label','显示密码');
+ await page.locator('input[autocomplete="current-password"]').fill('temp-password');
+ await page.locator('.auth-password-toggle').click();
+ await expect(page.locator('input[autocomplete="current-password"]')).toHaveAttribute('type','text');
+ await page.locator('.auth-password-toggle').click();
+ await expect(page.locator('input[autocomplete="current-password"]')).toHaveAttribute('type','password');
+ await page.locator('input[autocomplete="current-password"]').clear();
  await page.locator('.auth-login-card .auth-submit').click();
  expect(await page.locator('.auth-form input[autocomplete="username"]').evaluate((input:HTMLInputElement)=>input.validity.valueMissing)).toBe(true);
  expect(submissions).toHaveLength(0);
