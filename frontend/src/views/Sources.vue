@@ -3,13 +3,17 @@ import {computed,onMounted,ref,watch} from 'vue';
 import {api,match,page,fail,confirm,type DataRow} from '../api';
 const rows=ref<DataRow[]>([]),search=ref(''),selected=ref<DataRow|null>(null),tab=ref('fields'),
   sourceOpen=ref(false),form=ref({name:'',type:'MYSQL',host:'',port:3306,databaseName:'',username:'',password:''}),
-  tables=ref<DataRow[]>([]),columns=ref<DataRow[]>([]),activeTable=ref(''),newTable=ref(''),newColumn=ref(''),busy=ref(false),connectBusy=ref(false),connectResult=ref<DataRow|null>(null),credentialOpen=ref(false),credentialForm=ref({username:'',password:''});
+  tables=ref<DataRow[]>([]),columns=ref<DataRow[]>([]),activeTable=ref(''),newTable=ref(''),newColumn=ref(''),busy=ref(false),connectBusy=ref(false),connectResult=ref<DataRow|null>(null),credentialOpen=ref(false),tableSearch=ref(''),selectedFields=ref<string[]>([]),credentialForm=ref({username:'',password:''});
+const shownTables=computed(()=>tables.value.filter(t=>String(t.tableName).toLowerCase().includes(tableSearch.value.toLowerCase())));
+const allFieldsSelected=computed(()=>columns.value.length>0&&selectedFields.value.length===columns.value.length);
+function toggleAllFields(){selectedFields.value=allFieldsSelected.value?[]:columns.value.map(c=>String(c.columnName));}
+async function grantSelectedFields(){if(!selected.value||!activeTable.value||!selectedFields.value.length)return;try{for(const name of selectedFields.value){const c=columns.value.find(x=>x.columnName===name);if(c&&!c.enabled)await api('/api/sources/'+selected.value.id+'/tables/'+activeTable.value+'/columns','POST',{name});}await loadColumns(activeTable.value)}catch(e){fail(e)}}
 const filtered=computed(()=>rows.value.filter(r=>match(r,search.value,['name','type','host'])));
 async function refresh(){try{rows.value=await api('/api/sources')}catch(e){fail(e)}}
-async function open(row:DataRow){selected.value=row;tab.value='fields';activeTable.value='';await loadTables()}
+async function open(row:DataRow){selected.value=row;tab.value='fields';activeTable.value='';selectedFields.value=[];tableSearch.value='';await loadTables()}
 async function loadTables(){if(!selected.value)return;try{tables.value=await api('/api/sources/'+selected.value.id+'/tables')}catch(e){fail(e)}}
 async function loadColumns(table:string){
- activeTable.value=table;
+ activeTable.value=table;selectedFields.value=[];
  const base='/api/sources/'+selected.value?.id+'/tables/'+table;
  try{
   const physical=await api<DataRow[]>(base+'/physical-columns');
@@ -83,23 +87,18 @@ onMounted(()=>void refresh());defineExpose({refresh});
       style="margin-top:12px"/>
    </a-tab-pane>
    <a-tab-pane key="fields" tab="字段权限">
-    <template v-if="!activeTable">
-     <div class="inline-entry"><a-input v-model:value="newTable" placeholder="输入需要开放的数据表名"/><a-button type="primary" @click="addTable">授权</a-button></div>
-     <div v-for="t in tables" :key="t.tableName" class="grant-row"><div><strong>{{t.tableName}}</strong><small>{{t.authorizedColumns}} 个字段可读</small></div><a-button v-if="t.enabled" type="link" @click="loadColumns(t.tableName)">字段权限</a-button><a-button v-else type="link" @click="newTable=t.tableName;addTable()">恢复</a-button><a-button v-if="t.enabled" type="text" danger @click="confirm('撤销该表所有读取权限？',()=>removeTable(t.tableName))">撤销</a-button></div>
-     <a-empty v-if="!tables.length" description="尚未授权数据表"/>
-    </template>
-    <template v-else>
-     <a-button type="link" @click="activeTable=''">← 返回数据表</a-button><h3>{{activeTable}} 的可读字段</h3>
-     <div v-if="!columns.some(c=>c.dataType)" class="inline-entry"><a-input v-model:value="newColumn" placeholder="输入字段名"/><a-button type="primary" @click="addColumn">授权</a-button></div>
-     <a-table :data-source="columns" row-key="columnName" size="small" :pagination="false">
-  <a-table-column title="字段名" data-index="columnName"/>
-  <a-table-column title="字段类型"><template #default="{record}">{{record.dataType||'—'}}</template></a-table-column>
-  <a-table-column title="AI 可读取"><template #default="{record}"><a-checkbox :checked="!!record.enabled" @change="toggleAllowed(record)"/></template></a-table-column>
-  <a-table-column title="脱敏"><template #default="{record}"><a-checkbox :checked="!!record.masked" :disabled="!record.enabled" @change="toggleMask(record.columnName)"/></template></a-table-column>
-  <a-table-column title="操作"><template #default="{record}"><a-button v-if="record.enabled" type="link" danger @click="confirm('确认撤销字段授权？',()=>removeColumn(record.columnName))">撤销</a-button><a-button v-else type="link" @click="newColumn=record.columnName;addColumn()">恢复</a-button></template></a-table-column>
- </a-table>
- <p class="subtle">脱敏字段会以 [REDACTED] 返回，不能作为筛选或排序条件。</p>
-    </template>
+    <div class="inline-entry"><a-input v-model:value="newTable" placeholder="添加平台授权表"/><a-button type="primary" @click="addTable">授权表</a-button></div>
+    <div class="picker-two-pane">
+     <div class="picker-tables"><div class="picker-pane-head">数据表 <span>{{shownTables.length}}</span></div><a-input v-model:value="tableSearch" class="picker-search" allow-clear placeholder="搜索数据表"/>
+      <div class="picker-list"><button v-for="item in shownTables" :key="item.tableName" type="button" class="picker-table-item" :class="{active:activeTable===item.tableName}" @click="loadColumns(item.tableName)"><span class="picker-checkbox">{{activeTable===item.tableName?'✓':''}}</span>{{item.tableName}} <small v-if="!item.enabled">已停用</small></button><a-empty v-if="!shownTables.length" :image="undefined" description="暂无数据表"/></div>
+     </div>
+     <div class="picker-columns"><div class="picker-pane-head"><span>字段 <span>{{selectedFields.length}} / {{columns.length}}</span></span><a-button type="link" size="small" :disabled="!columns.length" @click="toggleAllFields">{{allFieldsSelected?'取消全选':'全选'}}</a-button></div>
+      <template v-if="activeTable"><div class="source-field-actions"><a-button size="small" type="primary" :disabled="!selectedFields.length" @click="grantSelectedFields">授权所选字段</a-button><a-button v-if="tables.find(t=>t.tableName===activeTable)?.enabled" size="small" danger @click="confirm('确认撤销该表所有读取权限？',()=>removeTable(activeTable))">撤销当前表</a-button></div>
+       <div class="source-field-list"><div v-for="c in columns" :key="c.columnName" class="source-field-row"><a-checkbox :checked="selectedFields.includes(c.columnName)" @change="selectedFields=$event.target.checked?[...selectedFields,c.columnName]:selectedFields.filter(x=>x!==c.columnName)">{{c.columnName}}</a-checkbox><span>{{c.enabled?'已授权':'未授权'}}</span><a-checkbox :checked="!!c.masked" :disabled="!c.enabled" @change="toggleMask(c.columnName)">脱敏</a-checkbox><a-button v-if="c.enabled" type="link" danger size="small" @click="confirm('撤销该字段读取权限？',()=>removeColumn(c.columnName))">撤销</a-button></div></div>
+      </template><a-empty v-else :image="undefined" description="请选择左侧数据表"/>
+     </div>
+    </div>
+    <p class="subtle">全选只选择字段，点击“授权所选字段”后才会修改白名单。Agent 仍需单独授权。</p>
    </a-tab-pane>
    <a-tab-pane key="limit" tab="访问限制"><a-descriptions :column="1" bordered size="small">
     <a-descriptions-item label="平台安全上限">200 行 / 次</a-descriptions-item>

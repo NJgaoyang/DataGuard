@@ -2,17 +2,21 @@
 import {computed,onMounted,ref,watch} from 'vue';
 import {api,stamp,match,page,fail,stateName,stateColor,type DataRow,type User} from '../api';
 const props=defineProps<{user:User;initialScope?:string}>();
-const tab=ref(props.initialScope||(props.user.roleCode==='READER'?'mine':'pending')),rows=ref<DataRow[]>([]),search=ref(''),detail=ref<DataRow|null>(null),reason=ref(''),busy=ref(false),requestHelpOpen=ref(false),preapplyBusy=ref(false),preapplyAgents=ref<DataRow[]>([]),preapplyOptions=ref<DataRow[]>([]),preapplyLoading=ref(false),preapplyForm=ref({agentId:'',sourceId:'',tableName:'',columns:[] as string[],requestedRows:50});
+const tab=ref(props.initialScope||(props.user.roleCode==='READER'?'mine':'pending')),rows=ref<DataRow[]>([]),search=ref(''),detail=ref<DataRow|null>(null),reason=ref(''),busy=ref(false),requestHelpOpen=ref(false),preapplyBusy=ref(false),preapplyAgents=ref<DataRow[]>([]),preapplyOptions=ref<DataRow[]>([]),preapplyLoading=ref(false),tableSearch=ref(''),preapplyForm=ref({agentId:'',sourceId:'',tableName:'',columns:[] as string[],requestedRows:50});
 const filtered=computed(()=>rows.value.filter(r=>match(r,search.value,['id','requesterName','agentName','tableName','sourceName'])));
 const canApprove=computed(()=>detail.value?.status==='PENDING'&&detail.value.approverUsername===props.user.username
  &&detail.value.ownerUsername!==props.user.username&&new Date(detail.value.expiresAt).getTime()>Date.now());
 const sourceOptions=computed(()=>[...new Map(preapplyOptions.value.map(x=>[x.sourceId,{value:x.sourceId,label:x.sourceName}])).values()]);
 const tableOptions=computed(()=>[...new Set(preapplyOptions.value.filter(x=>x.sourceId===preapplyForm.value.sourceId).map(x=>String(x.tableName)))].map(value=>({value,label:value})));
+const searchedTables=computed(()=>tableOptions.value.filter(x=>x.label.toLowerCase().includes(tableSearch.value.toLowerCase())));
+const allColumnsSelected=computed(()=>columnOptions.value.length>0&&preapplyForm.value.columns.length===columnOptions.value.length);
+const columnToggleLabel=computed(()=>allColumnsSelected.value?'取消全选':'全选');
+function toggleColumns(){preapplyForm.value.columns=allColumnsSelected.value?[]:[...columnOptions.value];}
 const columnOptions=computed(()=>preapplyOptions.value.filter(x=>x.sourceId===preapplyForm.value.sourceId&&x.tableName===preapplyForm.value.tableName).map(x=>String(x.columnName)));
 function resetTable(){preapplyForm.value.tableName='';preapplyForm.value.columns=[];}
 function changeTable(value:string){preapplyForm.value.tableName=value;preapplyForm.value.columns=[...columnOptions.value];}
 async function changeAgent(value:string){
- preapplyForm.value.agentId=value;preapplyForm.value.sourceId='';resetTable();preapplyOptions.value=[];
+ preapplyForm.value.agentId=value;preapplyForm.value.sourceId='';tableSearch.value='';resetTable();preapplyOptions.value=[];
  if(!value)return;
  try{preapplyLoading.value=true;preapplyOptions.value=await api<DataRow[]>('/api/requests/preapply/options?agentId='+encodeURIComponent(value));}
  catch(e){fail(e)}finally{preapplyLoading.value=false}
@@ -89,20 +93,20 @@ onMounted(()=>void refresh());defineExpose({refresh});
  </template>
 </div>
 </section>
- <a-modal v-model:open="requestHelpOpen" title="提前申请访问审批" :width="860" ok-text="提交申请" :confirm-loading="preapplyBusy" @ok="submitPreapply">
+ <a-modal v-model:open="requestHelpOpen" title="提前申请访问审批" :width="960" ok-text="提交申请" :confirm-loading="preapplyBusy" @ok="submitPreapply">
   <a-form layout="vertical" class="preapply-form">
    <div class="preapply-form-grid">
     <a-form-item label="Agent" required><a-select :value="preapplyForm.agentId||undefined" placeholder="选择本人 Agent" :options="preapplyAgents.map(x=>({value:x.id,label:x.name}))" @change="changeAgent"/></a-form-item>
     <a-form-item label="数据源" required><a-select v-model:value="preapplyForm.sourceId" placeholder="选择已授权数据源" :loading="preapplyLoading" :disabled="!preapplyForm.agentId" :options="sourceOptions" @change="resetTable"/></a-form-item>
    </div>
-   <a-form-item label="数据表" required><a-select :value="preapplyForm.tableName||undefined" placeholder="选择已授权数据表" :disabled="!preapplyForm.sourceId" :options="tableOptions" @change="changeTable"/></a-form-item>
-   <a-form-item label="读取字段" required>
-    <div class="preapply-fields">
-     <div class="preapply-fields-head"><span>可读取字段（已选 {{preapplyForm.columns.length}} / {{columnOptions.length}}）</span><a-checkbox :checked="!!columnOptions.length&&preapplyForm.columns.length===columnOptions.length" :indeterminate="preapplyForm.columns.length>0&&preapplyForm.columns.length<columnOptions.length" :disabled="!columnOptions.length" @change="preapplyForm.columns=$event.target.checked?[...columnOptions]:[]">全选</a-checkbox></div>
-     <a-checkbox-group v-model:value="preapplyForm.columns" :options="columnOptions.map(value=>({label:value,value}))" class="preapply-column-grid"/>
-     <a-empty v-if="!columnOptions.length" :image="undefined" description="请选择 Agent、数据源和数据表"/>
+   <div class="picker-two-pane">
+    <div class="picker-tables"><div class="picker-pane-head">数据表 <span>{{tableOptions.length}}</span></div><a-input v-model:value="tableSearch" placeholder="搜索数据表" allow-clear class="picker-search"/>
+     <div class="picker-list"><button v-for="item in searchedTables" :key="item.value" type="button" class="picker-table-item" :class="{active:preapplyForm.tableName===item.value}" @click="changeTable(item.value)"><span class="picker-checkbox">{{preapplyForm.tableName===item.value?'✓':''}}</span>{{item.label}}</button><a-empty v-if="!searchedTables.length" :image="undefined" description="暂无可选数据表"/></div>
     </div>
-   </a-form-item>
+    <div class="picker-columns"><div class="picker-pane-head"><span>字段 <span>{{preapplyForm.columns.length}} / {{columnOptions.length}}</span></span><a-button type="link" size="small" :disabled="!columnOptions.length" @click="toggleColumns">{{columnToggleLabel}}</a-button></div>
+     <a-checkbox-group v-if="columnOptions.length" v-model:value="preapplyForm.columns" :options="columnOptions.map(value=>({label:value,value}))" class="preapply-column-grid"/><a-empty v-else :image="undefined" description="请先选择左侧数据表"/>
+    </div>
+   </div>
    <a-form-item label="最大读取行数" required><a-input-number v-model:value="preapplyForm.requestedRows" :min="1" :max="200"/></a-form-item>
   </a-form>
   <p class="subtle">仅显示当前 Agent 已授权的表和字段。选择数据表后默认勾选全部可读字段；取消勾选可缩小申请范围。实际请求需要字段顺序、行数和查询参数完全匹配。</p>

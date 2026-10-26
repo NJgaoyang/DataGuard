@@ -49,7 +49,7 @@ class PolicyEngine {
     AND a.revoked_at IS NULL AND a.expires_at>NOW(3) AND u.enabled=1
     AND u.must_change_password=0 FOR UPDATE
    """,agent);
-  if(owners.size()!=1||!auth.getName().equals(owners.get(0).get("ownerName")))
+  if(owners.size()!=1||(!auth.getName().equals(owners.get(0).get("ownerName"))&&!auth.getAuthorities().stream().anyMatch(x->"ROLE_ADMIN".equals(x.getAuthority()))))
    throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Only active Agent owner can preapply");
   List<String> granted=db.query("""
    SELECT ac.column_name FROM dg_agent_columns ac
@@ -204,10 +204,10 @@ class ControlApi {
  List<Map<String,Object>> preapplyAgents(Authentication auth){
   return db.queryForList("""
    SELECT a.id,a.name FROM dg_agents a JOIN dg_users u ON u.id=a.owner_user_id
-   WHERE u.username=? AND u.enabled=1 AND u.must_change_password=0 AND a.enabled=1
+   WHERE (?=1 OR u.username=?) AND u.enabled=1 AND u.must_change_password=0 AND a.enabled=1
      AND a.revoked_at IS NULL AND a.expires_at>NOW(3)
    ORDER BY a.name LIMIT 300
-   """,auth.getName());
+   """,auth.getAuthorities().stream().anyMatch(x->"ROLE_ADMIN".equals(x.getAuthority()))?1:0,auth.getName());
  }
  /** Options are restricted to effective platform AND Agent grants and the logged-in Agent owner. */
  @GetMapping("/requests/preapply/options")
@@ -218,7 +218,7 @@ class ControlApi {
     WHERE a.id=? AND u.username=? AND u.enabled=1 AND u.must_change_password=0
       AND a.enabled=1 AND a.revoked_at IS NULL AND a.expires_at>NOW(3)
     """,Integer.class,agent,auth.getName());
-  if(owned==null||owned!=1)throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Only Agent owner can apply");
+  if((owned==null||owned!=1)&&!auth.getAuthorities().stream().anyMatch(x->"ROLE_ADMIN".equals(x.getAuthority())))throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Only Agent owner can apply");
   return db.queryForList("""
     SELECT s.id AS sourceId,s.name AS sourceName,t.table_name AS tableName,c.column_name AS columnName
     FROM dg_agent_columns c

@@ -414,3 +414,28 @@
 .agent-grant-column{display:inline-flex;align-items:center;gap:4px;border:1px solid #e7ebf2;background:#fff;border-radius:4px;color:#66778c;padding:4px 9px;font-size:12px}
 .agent-grant-column .ant-btn{height:18px!important;min-width:18px;padding:0 2px}
 @media(max-width:600px){.agent-grant-source{align-items:flex-start}.agent-grant-source-meta{font-size:11px}.agent-grant-details{padding-left:16px}}
+
+.picker-two-pane{display:grid;grid-template-columns:36% 64%;border:1px solid #e4eaf2;border-radius:7px;overflow:hidden;margin-bottom:18px;min-height:290px}
+.picker-tables{border-right:1px solid #e4eaf2;background:#fafbfd;min-width:0}
+.picker-columns{min-width:0;background:#fff}
+.picker-pane-head{height:45px;padding:0 15px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e9edf3;font-size:13px;font-weight:600;color:#263950}
+.picker-pane-head span span{color:#8a99ab;font-weight:400;margin-left:8px}
+.picker-search{margin:12px;width:calc(100% - 24px)}
+.picker-list{max-height:300px;overflow:auto;padding:0 8px 10px}
+.picker-table-item{display:flex;width:100%;align-items:center;gap:10px;padding:11px 10px;border:0;background:transparent;text-align:left;border-radius:5px;color:#4d607b;cursor:pointer}
+.picker-table-item:hover{background:#eef3fa}.picker-table-item.active{background:#e9f2ff;color:#1766e8;font-weight:600}
+.picker-checkbox{width:17px;height:17px;border:1px solid #b8c6d7;border-radius:3px;display:inline-flex;align-items:center;justify-content:center;font-size:12px}
+.picker-table-item.active .picker-checkbox{background:#1766e8;color:#fff;border-color:#1766e8}
+.picker-columns .preapply-column-grid{grid-template-columns:repeat(2,minmax(0,1fr));align-content:start}
+@media(max-width:650px){.picker-two-pane{grid-template-columns:1fr}.picker-tables{border-right:0;border-bottom:1px solid #e4eaf2}.picker-list{max-height:160px}}
+
+.agent-grant-pick-source{display:flex;align-items:center;gap:14px;margin:12px 0 14px;font-size:13px;color:#61728a}
+.agent-grant-pick-source .ant-select{width:320px;max-width:calc(100% - 60px)}
+.agent-grant-picker .picker-two-pane{margin-bottom:6px}
+.agent-grant-pane-columns{padding:17px;align-content:start}
+
+.source-field-actions{display:flex;gap:8px;padding:10px 15px;border-bottom:1px solid #edf1f5}
+.source-field-list{max-height:330px;overflow:auto;padding:0 15px}
+.source-field-row{min-height:44px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #f1f4f8}
+.source-field-row>.ant-checkbox-wrapper{flex:1;min-width:0}
+.source-field-row>span{font-size:12px;color:#8c9aaa}
