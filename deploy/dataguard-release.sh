@@ -26,11 +26,22 @@ rollback(){
  mv -f "$release/.candidate.jar" "$app"
  systemctl restart dataguard-new.service
  verify
- echo 'Rollback successful'
+ if [[ -s "$release/previous-git-sha" ]]; then
+  cp "$release/previous-git-sha" "$release/current-git-sha"
+else
+  printf '%s\n' "unverified-previous" > "$release/current-git-sha"
+fi
+printf '%s\\tROLLBACK\\t%s\n' "$(date -u +%Y%m%dT%H%M%SZ)" "$(sha256sum "$app" | awk '{print $1}')" >> "$release/deployments.tsv"
+echo 'Rollback successful'
 }
 case "${1:-}" in
  rollback)
   rollback
+  ;;
+ status)
+  echo "Release Git SHA: $(cat "$release/current-git-sha" 2>/dev/null || echo unknown)"
+  sha256sum "$app"
+  systemctl is-active dataguard-new.service
   ;;
  deploy)
   [[ $# -eq 3 && -s "$2" ]] || { echo 'Usage: deploy JAR COMMIT_SHA'; exit 2;}
@@ -39,6 +50,11 @@ case "${1:-}" in
   test -r "$app"
   stamp=$(date -u +%Y%m%dT%H%M%SZ)
   cp "$app" "$release/previous.jar"
+  if [[ -s "$release/current-git-sha" ]]; then
+    cp "$release/current-git-sha" "$release/previous-git-sha"
+  else
+    printf '%s\n' "unverified-previous" > "$release/previous-git-sha"
+  fi
   cp "$2" "$release/.candidate.jar"
   chmod 0600 "$release/previous.jar"
   chmod 0644 "$release/.candidate.jar"
