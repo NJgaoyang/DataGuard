@@ -7,6 +7,11 @@ const props=defineProps<{user:User;initialDetailId?:string}>();
 const rows=ref<DataRow[]>([]),sources=ref<DataRow[]>([]),users=ref<DataRow[]>([]),selected=ref<DataRow|null>(null),search=ref(''),tab=ref('grants'),secret=ref(''),createOpen=ref(false),form=ref({name:'',ownerId:'',expiresAt:'2099-01-31T23:59:59'}),grants=ref<DataRow>({tables:[],columns:[]}),
  sourceId=ref(''),tableName=ref(''),columnName=ref(''),expiry=ref(30),testResult=ref<DataRow|null>(null),testBusy=ref(false),rotationExpiry=ref('2099-01-31T23:59:59'),usage=ref<DataRow>({stats:{},recent:[]}),editingGrants=ref(false),grantBusy=ref(false),grantOptions=ref<DataRow[]>([]),grantFields=ref<Record<string,string[]>>({}),grantOriginal=ref<Record<string,string[]>>({}),viewMode=ref<'view'|'edit'>('view'),expandedSources=ref<string[]>([]),grantSource=ref(''),selectedGrantTable=ref(''),grantSearch=ref('');
 const mcpEndpoint=window.location.origin+'/mcp';
+const restEndpoint=window.location.origin+'/api/v1/agent';
+const exampleTab=ref('mcp');
+const mcpExample=computed(()=>`codex mcp add dataguard --url ${mcpEndpoint} --bearer-token-env-var DATAGUARD_TOKEN`);
+const javaExample=computed(()=>`// Java 21 · 使用环境变量 DATAGUARD_TOKEN\nvar client = java.net.http.HttpClient.newHttpClient();\nvar req = java.net.http.HttpRequest.newBuilder(java.net.URI.create("${restEndpoint}/datasources"))\n  .header("Authorization", "Bearer " + System.getenv("DATAGUARD_TOKEN"))\n  .GET().build();\nvar res = client.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());\nSystem.out.println(res.statusCode() + " " + res.body());`);
+const pythonExample=computed(()=>`# pip install requests\nimport os, requests\nbase = "${restEndpoint}"\nheaders = {"Authorization": "Bearer " + os.environ["DATAGUARD_TOKEN"]}\nr = requests.get(base + "/datasources", headers=headers, timeout=15)\nr.raise_for_status()\nprint(r.json())`);
 const filtered=computed(()=>rows.value.filter(r=>match(r,search.value,['name','ownerName'])));
 const sourceName=(id:string)=>sources.value.find(s=>s.id===id)?.name||'数据源';
 const groupedGrants=computed(()=>{const m=new Map<string,{sourceId:string;name:string;tables:DataRow[]}>();for(const t of (viewMode.value==='edit'?grantOptions.value:grants.value.tables||[])){const id=String(t.sourceId);if(!m.has(id))m.set(id,{sourceId:id,name:sourceName(id),tables:[]});m.get(id)!.tables.push(t)}return [...m.values()]});
@@ -45,6 +50,7 @@ async function loadUsage(){if(!selected.value)return;try{usage.value=await api('
 watch(tab,next=>{if(next==='usage')void loadUsage()});
 async function openCreate(){try{if(props.user.roleCode==='ADMIN')users.value=await api('/api/users');form.value={name:'',ownerId:'',expiresAt:'2099-01-31T23:59:59'};createOpen.value=true}catch(e){fail(e)}}
 async function save(){try{const data=await api<DataRow>('/api/agents','POST',{...form.value,ownerId:form.value.ownerId||null});createOpen.value=false;secret.value=data.token;await refresh()}catch(e){fail(e)}}
+async function copyExample(){try{await navigator.clipboard.writeText(exampleTab.value==='java'?javaExample.value:exampleTab.value==='python'?pythonExample.value:mcpExample.value);message.success('样例已复制')}catch{message.error('复制失败，请手动选择代码')}}
 async function copySecret(){try{await navigator.clipboard.writeText(secret.value);message.success('令牌已复制')}catch{message.error('复制失败，请手动复制令牌')}}
 async function deleteAgent(row:DataRow){try{await api('/api/agents/'+row.id,'DELETE');if(selected.value?.id===row.id)selected.value=null;await refresh()}catch(e){fail(e)}}
 async function toggleAgent(row:DataRow){try{await api('/api/agents/'+row.id+'/toggle','POST');await refresh()}catch(e){fail(e)}}
@@ -77,7 +83,7 @@ onMounted(async()=>{await refresh();if(props.initialDetailId){const item=rows.va
      <a-descriptions-item label="Agent ID">{{selected.id}}</a-descriptions-item>
      <a-descriptions-item label="所属用户">{{selected.ownerName}}</a-descriptions-item>
      <a-descriptions-item label="到期时间">{{stamp(selected.expiresAt)}}</a-descriptions-item>
-     <a-descriptions-item label="MCP 服务地址">{{mcpEndpoint}}</a-descriptions-item><a-descriptions-item label="Agent 身份">{{selected.id}}（通过独立 Bearer Token 认证）</a-descriptions-item>
+     <a-descriptions-item label="MCP 服务地址">{{mcpEndpoint}}</a-descriptions-item><a-descriptions-item label="REST API 地址">{{restEndpoint}}</a-descriptions-item><a-descriptions-item label="Agent 身份">{{selected.id}}（通过独立 Bearer Token 认证）</a-descriptions-item>
     </a-descriptions>
     <div class="drawer-actions" style="align-items:center;flex-wrap:wrap">
      <a-button :loading="testBusy" @click="testAgent">接入检测</a-button>
@@ -131,6 +137,17 @@ onMounted(async()=>{await refresh();if(props.initialDetailId){const item=rows.va
   <a-table-column title="结果"><template #default="{record}"><a-tag :color="stateColor(record.status)">{{stateName[record.status]||'未知状态'}}</a-tag></template></a-table-column>
  </a-table>
  </a-tab-pane>
+    <a-tab-pane key="examples" tab="接入样例">
+     <div class="drawer-section-title">Agent 接入示例</div>
+     <p class="subtle">接入前请在 Agent 管理中复制 Token，设置为环境变量 DATAGUARD_TOKEN；不要写入代码或提交到 GitHub。</p>
+     <a-tabs v-model:active-key="exampleTab" size="small">
+      <a-tab-pane key="mcp" tab="MCP / Codex"><p class="subtle">MCP 地址：{{mcpEndpoint}}</p><pre class="agent-example-code">{{mcpExample}}</pre></a-tab-pane>
+      <a-tab-pane key="java" tab="REST / Java"><p class="subtle">基于 Java 21 HttpClient，读取当前 Agent 可见数据源。</p><pre class="agent-example-code">{{javaExample}}</pre></a-tab-pane>
+      <a-tab-pane key="python" tab="REST / Python"><p class="subtle">使用 requests 获取授权的数据源列表。</p><pre class="agent-example-code">{{pythonExample}}</pre></a-tab-pane>
+     </a-tabs>
+     <a-button @click="copyExample">复制当前示例</a-button>
+     <p class="subtle" style="margin-top:16px">查询：POST {{restEndpoint}}/queries · 审批查询：GET {{restEndpoint}}/requests/{id}</p>
+    </a-tab-pane>
    </a-tabs>
   </template>
  </div>
