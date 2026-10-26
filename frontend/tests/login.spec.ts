@@ -21,12 +21,12 @@ test('login form actually submits, reports invalid credentials, and opens the wo
   body:JSON.stringify({stats:{requests:0,pending:0,denied:0,success:0},recent:[]})}));
  await page.goto('/');
  await expect(page.locator('.login-shell')).toBeVisible();
- await page.getByRole('button',{name:'登录',exact:true}).click();
+ await page.locator('.login-panel button[type="submit"]').click();
  await expect(page.getByText('请输入用户名')).toBeVisible();
  expect(submissions).toHaveLength(0);
  await page.locator('input[autocomplete="username"]').fill('admin');
  await page.locator('input[autocomplete="current-password"]').fill('incorrect');
- await page.getByRole('button',{name:'登录',exact:true}).click();
+ await page.locator('.login-panel button[type="submit"]').click();
  await expect(page.locator('.login-error')).toContainText('用户名或密码错误');
  expect(submissions).toEqual([{username:'admin',password:'incorrect',csrf:'browser-test-csrf'}]);
  await page.locator('input[autocomplete="current-password"]').fill('correct-test-only');
