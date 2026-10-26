@@ -463,3 +463,14 @@
 .row-more-menu .ant-dropdown-menu-item-disabled{color:#bfc6d1!important}
 .row-more-menu .ant-dropdown-menu-item-disabled .row-menu-icon{color:#ccd2dc!important}
 .row-more-menu .ant-dropdown-menu-item-divider{margin:9px 0;background:#e9edf3}
+
+/* Keep login inputs white even when Chrome autofills saved credentials. */
+.auth-field-control{background:#fff}
+.auth-form .auth-field-control input:-webkit-autofill,
+.auth-form .auth-field-control input:-webkit-autofill:hover,
+.auth-form .auth-field-control input:-webkit-autofill:focus{
+ -webkit-box-shadow:0 0 0 1000px #fff inset!important;
+ -webkit-text-fill-color:#26334b!important;
+ caret-color:#26334b;
+ transition:background-color 9999s ease-out 0s;
+}
