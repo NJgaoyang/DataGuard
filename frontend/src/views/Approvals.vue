@@ -6,6 +6,7 @@ const tab=ref(props.initialScope||(props.user.roleCode==='READER'?'mine':'pendin
 const filtered=computed(()=>rows.value.filter(r=>match(r,search.value,['id','requesterName','agentName','tableName','sourceName'])));
 const canApprove=computed(()=>detail.value?.status==='PENDING'&&detail.value.approverUsername===props.user.username
  &&detail.value.ownerUsername!==props.user.username&&new Date(detail.value.expiresAt).getTime()>Date.now());
+const preapplyEmptyReason=computed(()=>!preapplyForm.value.agentId?'请先选择 Agent':preapplyLoading.value?'正在读取授权信息':!preapplyOptions.value.length?'该 Agent 暂无有效的数据源、表和字段授权；请先在数据源和 Agent 管理中授权':'没有匹配的数据源');
 const sourceOptions=computed(()=>[...new Map(preapplyOptions.value.map(x=>[x.sourceId,{value:x.sourceId,label:x.sourceName}])).values()]);
 const tableOptions=computed(()=>[...new Set(preapplyOptions.value.filter(x=>x.sourceId===preapplyForm.value.sourceId).map(x=>String(x.tableName)))].map(value=>({value,label:value})));
 const searchedTables=computed(()=>tableOptions.value.filter(x=>x.label.toLowerCase().includes(tableSearch.value.toLowerCase())));
@@ -97,7 +98,7 @@ onMounted(()=>void refresh());defineExpose({refresh});
   <a-form layout="vertical" class="preapply-form">
    <div class="preapply-form-grid">
     <a-form-item label="Agent" required><a-select :value="preapplyForm.agentId||undefined" placeholder="选择本人 Agent" :options="preapplyAgents.map(x=>({value:x.id,label:x.name}))" @change="changeAgent"/></a-form-item>
-    <a-form-item label="数据源" required><a-select v-model:value="preapplyForm.sourceId" placeholder="选择已授权数据源" :loading="preapplyLoading" :disabled="!preapplyForm.agentId" :options="sourceOptions" @change="resetTable"/></a-form-item>
+    <a-form-item label="数据源" required><a-select v-model:value="preapplyForm.sourceId" placeholder="选择已授权数据源" :not-found-content="preapplyEmptyReason" :loading="preapplyLoading" :disabled="!preapplyForm.agentId" :options="sourceOptions" @change="resetTable"/></a-form-item>
    </div>
    <div class="picker-two-pane">
     <div class="picker-tables"><div class="picker-pane-head">数据表 <span>{{tableOptions.length}}</span></div><a-input v-model:value="tableSearch" placeholder="搜索数据表" allow-clear class="picker-search"/>

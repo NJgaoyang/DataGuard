@@ -30,6 +30,11 @@ class AgentApi {
   byte[] bytes=new byte[32];new SecureRandom().nextBytes(bytes);
   return "dg_"+Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
  }
+ static boolean expiryValid(Object value){
+  if(value instanceof java.time.LocalDateTime date)return date.isAfter(java.time.LocalDateTime.now());
+  if(value instanceof java.sql.Timestamp date)return date.toInstant().isAfter(java.time.Instant.now());
+  return false;
+ }
  boolean admin(Authentication a){return a.getAuthorities().stream().anyMatch(x->x.getAuthority().equals("ROLE_ADMIN"));}
  @GetMapping List<Map<String,Object>> list(Authentication auth){
   String filter=admin(auth)?"":" WHERE owner.username=?";
@@ -97,7 +102,7 @@ class AgentApi {
    """,agent);
   boolean active=Boolean.TRUE.equals(status.get("enabled"))&&
    Boolean.TRUE.equals(status.get("ownerEnabled"))&&status.get("revokedAt")==null&&
-   ((java.sql.Timestamp)status.get("expiresAt")).after(new java.util.Date());
+   expiryValid(status.get("expiresAt"));
   return Map.of("agentActive",active,"authorizedColumns",status.get("effectiveColumns"),
     "mcpEndpoint","/mcp","ready",active&&((Number)status.get("effectiveColumns")).intValue()>0);
  }
