@@ -360,3 +360,11 @@
  .app-root .page-breadcrumb .breadcrumb-parent{font-size:13px}
  .app-root .topbar{justify-content:space-between}
 }
+
+/* Ant Design Table inserts a hidden column-width measurement row. Keep it at zero
+   height even though ordinary body cells have globally configured padding. */
+.app-root .ant-table-wrapper .ant-table-tbody > tr.ant-table-measure-row,
+.app-root .ant-table-wrapper .ant-table-tbody > tr.ant-table-measure-row > td {
+  height:0!important;min-height:0!important;border:0!important;
+  padding:0!important;line-height:0!important;
+}
