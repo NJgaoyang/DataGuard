@@ -447,3 +447,19 @@
 
 .source-grant-footer{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:16px}
 .source-grant-footer .ant-btn{min-width:88px}
+
+/* Compact table actions with a quiet button and a floating grouped menu. */
+.table-row-actions{white-space:nowrap;display:inline-flex;align-items:center;gap:8px}
+.table-row-actions .row-view-btn,.table-row-actions .row-more-btn{height:34px;padding:0 13px;border-radius:10px;box-shadow:none;font-size:13px}
+.table-row-actions .row-view-btn{color:#53647e;background:#f5f7fa;border:1px solid #e7ebf2}
+.table-row-actions .row-view-btn:hover{color:#1865c9;border-color:#d7e4f7;background:#f0f5fd}
+.table-row-actions .row-more-btn{color:#425471;background:#f7f8fb;border:1px solid transparent}
+.table-row-actions .row-more-btn:hover{background:#ebf0f8;color:#1865c9}
+.row-more-chevron{font-size:16px;margin-left:3px;line-height:1}
+.row-more-menu.ant-dropdown-menu{min-width:205px;padding:12px;border-radius:16px;background:#fff;box-shadow:0 14px 42px rgba(27,41,67,.14);border:1px solid #f1f3f7}
+.row-more-menu .ant-dropdown-menu-item{min-height:43px;padding:9px 12px;border-radius:8px;font-size:13px;color:#34445d}
+.row-more-menu .ant-dropdown-menu-title-content{display:flex;align-items:center;gap:12px}
+.row-more-menu .row-menu-icon{display:inline-flex;align-items:center;justify-content:center;width:19px;min-width:19px;font-size:16px;color:#8190a7;font-weight:400}
+.row-more-menu .ant-dropdown-menu-item-disabled{color:#bfc6d1!important}
+.row-more-menu .ant-dropdown-menu-item-disabled .row-menu-icon{color:#ccd2dc!important}
+.row-more-menu .ant-dropdown-menu-item-divider{margin:9px 0;background:#e9edf3}

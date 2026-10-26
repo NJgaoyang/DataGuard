@@ -63,7 +63,7 @@ onMounted(()=>void refresh());defineExpose({refresh});
   <a-table-column title="访问对象" data-index="tableName"/>
   <a-table-column title="申请行数" data-index="requestedRows"/>
   <a-table-column title="状态"><template #default="{record}"><a-tag :color="stateColor(record.status)">{{stateName[record.status]||record.status}}</a-tag></template></a-table-column>
-  <a-table-column title="操作" :width="125"><template #default="{record}"><a-space size="small"><a-button type="link" @click="detail=record;reason=''">查看</a-button><a-dropdown v-if="record.approverUsername===user.username&&record.status==='PENDING'" :trigger="['click']"><a-button type="link">更多⌄</a-button><template #overlay><a-menu><a-menu-item @click="detail=record;reason=''">处理审批</a-menu-item></a-menu></template></a-dropdown></a-space></template></a-table-column>
+  <a-table-column title="操作" :width="190"><template #default="{record}"><a-space size="small" class="table-row-actions"><a-button class="row-view-btn" @click="detail=record;reason=''">查看</a-button><a-dropdown v-if="record.approverUsername===user.username&&record.status==='PENDING'" :trigger="['click']"><a-button class="row-more-btn">更多 <span class="row-more-chevron">⌄</span></a-button><template #overlay><a-menu class="row-more-menu"><a-menu-item @click="detail=record;reason=''"><span class="row-menu-icon">◉</span>处理审批</a-menu-item></a-menu></template></a-dropdown></a-space></template></a-table-column>
  </a-table>
 </section>
 <section v-else class="panel detail-page" aria-label="审批详情页面">
