@@ -38,5 +38,5 @@ export function stamp(v:unknown){
 }
 export function match(row:DataRow,q:string,fields:string[]){return !q||fields.some(key=>String(row[key]??'').toLowerCase().includes(q.toLowerCase()))}
 export const page={pageSize:10,showSizeChanger:false,showTotal:(total:number)=>`共 ${total} 条`};
-export const stateName:Record<string,string>={SUCCESS:'成功',PENDING:'待审批',APPROVED:'审批通过',DENIED:'已拒绝',REJECTED:'已拒绝',FAILED:'失败',EXECUTING:'执行中',EXPIRED:'已过期'};
+export const stateName:Record<string,string>={SUCCESS:'成功',PENDING:'待审批',APPROVED:'审批通过',DENIED:'已拒绝',REJECTED:'已拒绝',FAILED:'失败',EXECUTING:'执行中',EXPIRED:'已过期',CANCELLED:'已取消',TIMEOUT:'超时',ERROR:'错误',ALLOW:'直接放行',APPROVAL:'需要审批',DENY:'直接拒绝',ACTIVE:'正常',DISABLED:'已停用',REVOKED:'已撤销'};
 export function stateColor(s:string){return s==='SUCCESS'?'green':s==='PENDING'?'orange':s==='APPROVED'?'blue':['DENIED','REJECTED','FAILED'].includes(s)?'red':'default'}

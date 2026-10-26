@@ -97,9 +97,10 @@ onMounted(()=>void refresh());defineExpose({refresh});
  <a-modal v-model:open="requestHelpOpen" title="提前申请访问审批" :width="960" ok-text="提交申请" :confirm-loading="preapplyBusy" @ok="submitPreapply">
   <a-form layout="vertical" class="preapply-form">
    <div class="preapply-form-grid">
-    <a-form-item label="Agent" required><a-select :value="preapplyForm.agentId||undefined" placeholder="选择本人 Agent" :options="preapplyAgents.map(x=>({value:x.id,label:x.name}))" @change="changeAgent"/></a-form-item>
+    <a-form-item label="Agent" required><a-select :value="preapplyForm.agentId||undefined" placeholder="选择 Agent（管理员可选择全部）" :options="preapplyAgents.map(x=>({value:x.id,label:x.name}))" @change="changeAgent"/></a-form-item>
     <a-form-item label="数据源" required><a-select v-model:value="preapplyForm.sourceId" placeholder="选择已授权数据源" :not-found-content="preapplyEmptyReason" :loading="preapplyLoading" :disabled="!preapplyForm.agentId" :options="sourceOptions" @change="resetTable"/></a-form-item>
    </div>
+   <a-alert v-if="preapplyForm.agentId&&!preapplyLoading&&!preapplyOptions.length" type="warning" show-icon message="该 Agent 暂无可用于申请的有效授权" description="请先到数据源管理开放表和字段，再到 Agent 管理为这个 Agent 单独授予相同表和字段；管理员可以操作所有 Agent。" style="margin-bottom:14px"/>
    <div class="picker-two-pane">
     <div class="picker-tables"><div class="picker-pane-head">数据表 <span>{{tableOptions.length}}</span></div><a-input v-model:value="tableSearch" placeholder="搜索数据表" allow-clear class="picker-search"/>
      <div class="picker-list"><button v-for="item in searchedTables" :key="item.value" type="button" class="picker-table-item" :class="{active:preapplyForm.tableName===item.value}" @click="changeTable(item.value)"><span class="picker-checkbox">{{preapplyForm.tableName===item.value?'✓':''}}</span>{{item.label}}</button><a-empty v-if="!searchedTables.length" :image="undefined" description="暂无可选数据表"/></div>

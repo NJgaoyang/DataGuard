@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import {computed,onMounted,ref,watch} from 'vue';
-import {api,stamp,match,page,fail,confirm,type DataRow,type User} from '../api';
+import {api,stamp,match,page,fail,confirm,stateName,stateColor,type DataRow,type User} from '../api';
 const props=defineProps<{user:User}>();
 const rows=ref<DataRow[]>([]),sources=ref<DataRow[]>([]),users=ref<DataRow[]>([]),selected=ref<DataRow|null>(null),search=ref(''),tab=ref('grants'),secret=ref(''),createOpen=ref(false),form=ref({name:'',ownerId:'',validDays:30}),grants=ref<DataRow>({tables:[],columns:[]}),
  sourceId=ref(''),tableName=ref(''),columnName=ref(''),expiry=ref(30),testResult=ref<DataRow|null>(null),testBusy=ref(false),rotationDays=ref(30),usage=ref<DataRow>({stats:{},recent:[]}),editingGrants=ref(false),viewMode=ref<'view'|'edit'>('view'),expandedSources=ref<string[]>([]),grantSource=ref(''),selectedGrantTable=ref(''),grantSearch=ref('');
@@ -53,7 +53,7 @@ onMounted(()=>void refresh());defineExpose({refresh});
      <a-descriptions-item label="Agent ID">{{selected.id}}</a-descriptions-item>
      <a-descriptions-item label="所属用户">{{selected.ownerName}}</a-descriptions-item>
      <a-descriptions-item label="到期时间">{{stamp(selected.expiresAt)}}</a-descriptions-item>
-     <a-descriptions-item label="MCP 地址">{{mcpEndpoint}}</a-descriptions-item>
+     <a-descriptions-item label="MCP 服务地址">{{mcpEndpoint}}</a-descriptions-item><a-descriptions-item label="Agent 身份">{{selected.id}}（通过独立 Bearer Token 认证）</a-descriptions-item>
     </a-descriptions>
     <div class="drawer-actions" style="align-items:center;flex-wrap:wrap">
      <a-button :loading="testBusy" @click="testAgent">接入检测</a-button>
@@ -63,7 +63,7 @@ onMounted(()=>void refresh());defineExpose({refresh});
     </div>
     <a-alert v-if="testResult" :type="testResult.ready?'success':'warning'" show-icon
       :message="testResult.ready?'Agent 授权就绪':'Agent 尚未满足接入条件'"
-      :description="'有效授权字段：'+(testResult.authorizedColumns??0)+' · MCP 地址：'+mcpEndpoint"
+      :description="'有效授权字段：'+(testResult.authorizedColumns??0)+' · Agent 使用独立令牌访问共享 MCP 地址：'+mcpEndpoint"
       style="margin-top:12px"/>
     </a-tab-pane>
     <a-tab-pane key="grants" tab="访问授权">
@@ -105,7 +105,7 @@ onMounted(()=>void refresh());defineExpose({refresh});
   <a-table-column title="时间"><template #default="{record}">{{stamp(record.createdAt)}}</template></a-table-column>
   <a-table-column title="数据表" data-index="tableName"/>
   <a-table-column title="行数" data-index="requestedRows"/>
-  <a-table-column title="结果" data-index="status"/>
+  <a-table-column title="结果"><template #default="{record}"><a-tag :color="stateColor(record.status)">{{stateName[record.status]||'未知状态'}}</a-tag></template></a-table-column>
  </a-table>
  </a-tab-pane>
    </a-tabs>
