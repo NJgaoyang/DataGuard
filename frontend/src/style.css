@@ -394,3 +394,23 @@
 .preapply-column-grid{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 14px;padding:16px!important}
 .preapply-column-grid .ant-checkbox-wrapper{margin-inline-start:0!important;overflow-wrap:anywhere}
 @media(max-width:700px){.preapply-form-grid{grid-template-columns:1fr}.preapply-column-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* Agent grants: compact datasource groups; details expand only on demand. */
+.agent-grant-groups{border:1px solid #e7ecf3;border-radius:7px;overflow:hidden}
+.agent-grant-group+.agent-grant-group{border-top:1px solid #e7ecf3}
+.agent-grant-source{width:100%;min-height:56px;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 16px;background:#fff;border:0;text-align:left;color:#283d56}
+.agent-grant-source:hover{background:#f8fafd}
+.agent-grant-source-title,.agent-grant-source-meta{display:flex;align-items:center;gap:10px}
+.agent-grant-source-title strong{font-size:13px;font-weight:600}
+.agent-grant-source-icon{display:grid;place-items:center;width:27px;height:27px;border-radius:6px;background:#edf3fc;color:#3273c6}
+.agent-grant-source-meta{font-size:12px;color:#8592a3}
+.agent-grant-arrow{font-size:18px;color:#74839a;margin-left:12px}
+.agent-grant-details{background:#fcfdff;border-top:1px solid #edf1f5;padding:4px 16px 10px 53px}
+.agent-grant-table{padding:12px 0}
+.agent-grant-table+.agent-grant-table{border-top:1px solid #edf1f5}
+.agent-grant-table-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;font-size:13px}
+.agent-grant-count{color:#95a0af;font-size:12px;margin-left:10px}
+.agent-grant-columns{display:flex;gap:8px;flex-wrap:wrap}
+.agent-grant-column{display:inline-flex;align-items:center;gap:4px;border:1px solid #e7ebf2;background:#fff;border-radius:4px;color:#66778c;padding:4px 9px;font-size:12px}
+.agent-grant-column .ant-btn{height:18px!important;min-width:18px;padding:0 2px}
+@media(max-width:600px){.agent-grant-source{align-items:flex-start}.agent-grant-source-meta{font-size:11px}.agent-grant-details{padding-left:16px}}

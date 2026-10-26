@@ -3,14 +3,15 @@ import {computed,onMounted,ref,watch} from 'vue';
 import {api,stamp,match,page,fail,confirm,type DataRow,type User} from '../api';
 const props=defineProps<{user:User}>();
 const rows=ref<DataRow[]>([]),sources=ref<DataRow[]>([]),users=ref<DataRow[]>([]),selected=ref<DataRow|null>(null),search=ref(''),tab=ref('grants'),secret=ref(''),createOpen=ref(false),form=ref({name:'',ownerId:'',validDays:30}),grants=ref<DataRow>({tables:[],columns:[]}),
- sourceId=ref(''),tableName=ref(''),columnName=ref(''),expiry=ref(30),testResult=ref<DataRow|null>(null),testBusy=ref(false),rotationDays=ref(30),usage=ref<DataRow>({stats:{},recent:[]}),editingGrants=ref(false);
+ sourceId=ref(''),tableName=ref(''),columnName=ref(''),expiry=ref(30),testResult=ref<DataRow|null>(null),testBusy=ref(false),rotationDays=ref(30),usage=ref<DataRow>({stats:{},recent:[]}),editingGrants=ref(false),expandedSources=ref<string[]>([]);
 const mcpEndpoint=window.location.origin+'/mcp';
 const filtered=computed(()=>rows.value.filter(r=>match(r,search.value,['name','ownerName'])));
 const sourceName=(id:string)=>sources.value.find(s=>s.id===id)?.name||'数据源';
+const groupedGrants=computed(()=>{const groups=new Map<string,{sourceId:string;name:string;tables:DataRow[]}>();for(const r of grants.value.tables||[]){const id=String(r.sourceId);if(!groups.has(id))groups.set(id,{sourceId:id,name:sourceName(id),tables:[]});groups.get(id)!.tables.push(r)}return [...groups.values()]});
 const columnsFor=(r:DataRow)=>(grants.value.columns||[]).filter((c:DataRow)=>c.sourceId===r.sourceId&&c.tableName===r.tableName);
 const status=(r:DataRow)=>r.revokedAt||!r.enabled?'已停用':new Date(r.expiresAt).getTime()<Date.now()?'已过期':'正常';
 async function refresh(){try{rows.value=await api('/api/agents')}catch(e){fail(e)}}
-async function open(row:DataRow){selected.value=row;tab.value='grants';editingGrants.value=false;usage.value={stats:{},recent:[]};try{grants.value=await api('/api/agents/'+row.id+'/grants');if(props.user.roleCode==='ADMIN')sources.value=await api('/api/sources')}catch(e){fail(e)}}
+async function open(row:DataRow){selected.value=row;tab.value='grants';editingGrants.value=false;expandedSources.value=[];usage.value={stats:{},recent:[]};try{grants.value=await api('/api/agents/'+row.id+'/grants');if(props.user.roleCode==='ADMIN')sources.value=await api('/api/sources')}catch(e){fail(e)}}
 async function testAgent(){if(!selected.value)return;try{testBusy.value=true;testResult.value=await api('/api/agents/'+selected.value.id+'/check')}catch(e){fail(e)}finally{testBusy.value=false}}
 async function rotate(){if(!selected.value)return;const id=selected.value.id;try{
  const updated=await api<DataRow>('/api/agents/'+id+'/rotate','POST',{validDays:rotationDays.value});
@@ -64,14 +65,19 @@ onMounted(()=>void refresh());defineExpose({refresh});
     <a-tab-pane key="grants" tab="访问授权">
      <div class="drawer-section-title">可访问的数据源和表</div>
      <div v-if="!(grants.tables||[]).length" class="subtle">尚未为当前 Agent 授权数据表。</div>
-     <div v-for="r in grants.tables||[]" :key="r.sourceId+r.tableName" class="grant-tree">
-      <div class="grant-tree-source">⌄ {{sourceName(r.sourceId)}}</div>
-      <div class="grant-tree-table">
-       <a-checkbox :checked="true" :disabled="!editingGrants" @change="confirm('确认撤销整张表的 Agent 授权？',()=>removeTable(r))">{{r.tableName}}</a-checkbox>
-      </div>
-      <div v-for="column in columnsFor(r)" :key="column.columnName" class="grant-tree-column">
-       <a-checkbox :checked="true" :disabled="!editingGrants" @change="confirm('确认撤销字段授权？',()=>removeColumn(column))">{{column.columnName}}</a-checkbox>
-      </div>
+     <div class="agent-grant-groups">
+      <section v-for="group in groupedGrants" :key="group.sourceId" class="agent-grant-group">
+       <button class="agent-grant-source" type="button" :aria-expanded="expandedSources.includes(group.sourceId)" @click="expandedSources=expandedSources.includes(group.sourceId)?expandedSources.filter(x=>x!==group.sourceId):[...expandedSources,group.sourceId]">
+        <span class="agent-grant-source-title"><span class="agent-grant-source-icon">▤</span><strong>{{group.name}}</strong></span>
+        <span class="agent-grant-source-meta">{{group.tables.length}} 张表 · {{group.tables.reduce((sum,r)=>sum+columnsFor(r).length,0)}} 个字段 <span class="agent-grant-arrow">{{expandedSources.includes(group.sourceId)?'⌃':'⌄'}}</span></span>
+       </button>
+       <div v-if="expandedSources.includes(group.sourceId)" class="agent-grant-details">
+        <div v-for="r in group.tables" :key="r.tableName" class="agent-grant-table">
+         <div class="agent-grant-table-header"><div><strong>{{r.tableName}}</strong><span class="agent-grant-count">{{columnsFor(r).length}} 个字段</span></div><a-button v-if="editingGrants" danger type="link" size="small" @click="confirm('确认撤销整张表的 Agent 授权？',()=>removeTable(r))">撤销表授权</a-button></div>
+         <div class="agent-grant-columns"><span v-for="column in columnsFor(r)" :key="column.columnName" class="agent-grant-column">{{column.columnName}}<a-button v-if="editingGrants" type="text" danger size="small" @click="confirm('确认撤销字段授权？',()=>removeColumn(column))">×</a-button></span><span v-if="!columnsFor(r).length" class="subtle">暂无已授权字段</span></div>
+        </div>
+       </div>
+      </section>
      </div>
      <div class="grant-limit">
       <span>最大读取行数</span><strong>200 行</strong>
