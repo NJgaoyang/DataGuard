@@ -71,7 +71,11 @@ class AgentApi {
  @org.springframework.transaction.annotation.Transactional
  Map<String,Object> deleteAgent(Authentication auth,@PathVariable String id){
   Guard.admin(auth);String safe=Guard.id(id);
-  if(db.queryForList("SELECT id FROM dg_agents WHERE id=? FOR UPDATE",safe).isEmpty())throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+  var agents=db.queryForList("SELECT id,enabled FROM dg_agents WHERE id=? FOR UPDATE",safe);
+  if(agents.isEmpty())throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+  Object active=agents.get(0).get("enabled");
+  if(active instanceof Number ? ((Number)active).intValue()!=0 : Boolean.TRUE.equals(active))
+   throw new ResponseStatusException(HttpStatus.CONFLICT,"Disable Agent before deletion");
   Number refs=db.queryForObject("SELECT (SELECT COUNT(*) FROM dg_requests WHERE agent_id=?)+(SELECT COUNT(*) FROM dg_rules WHERE agent_id=?)",Long.class,safe,safe);
   if(refs!=null&&refs.longValue()>0)throw new ResponseStatusException(HttpStatus.CONFLICT,"Agent has historical requests or rules; revoke instead");
   db.update("DELETE FROM dg_agent_columns WHERE agent_id=?",safe);
@@ -87,7 +91,8 @@ class AgentApi {
   var rows=db.queryForList("SELECT enabled,revoked_at AS revokedAt FROM dg_agents WHERE id=? FOR UPDATE",safe);
   if(rows.isEmpty())throw new ResponseStatusException(HttpStatus.NOT_FOUND);
   if(rows.get(0).get("revokedAt")!=null)throw new ResponseStatusException(HttpStatus.CONFLICT,"Agent token was permanently revoked; create a new Agent");
-  boolean enabled=Boolean.TRUE.equals(rows.get(0).get("enabled"));
+  Object stored=rows.get(0).get("enabled");
+  boolean enabled=stored instanceof Number ? ((Number)stored).intValue()!=0 : Boolean.TRUE.equals(stored);
   db.update("UPDATE dg_agents SET enabled=? WHERE id=?",!enabled,safe);
   audit.log(auth.getName(),enabled?"AGENT_DISABLED":"AGENT_ENABLED",null,safe,"SUCCESS","");
   return Map.of("enabled",!enabled);

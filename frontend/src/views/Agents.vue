@@ -18,10 +18,12 @@ const activeKey=computed(()=>grantKey(grantSource.value,selectedGrantTable.value
 const activeOption=computed(()=>grantOptions.value.find(t=>t.sourceId===grantSource.value&&t.tableName===selectedGrantTable.value));
 const selectedColumns=computed(()=>grantFields.value[activeKey.value]||[]);
 const selectedAll=computed(()=>!!activeOption.value?.columns?.length&&selectedColumns.value.length===activeOption.value.columns.length);
+const activeTableEnabled=computed(()=>selectedColumns.value.length>0);
+function setGrantField(column:string,enabled:boolean){if(!activeTableEnabled.value)return;const current=grantFields.value[activeKey.value]||[];grantFields.value[activeKey.value]=enabled?[...new Set([...current,column])]:current.filter(c=>c!==column)}
 const grantDirty=computed(()=>Object.keys(grantFields.value).some(k=>JSON.stringify([...(grantFields.value[k]||[])].sort())!==JSON.stringify([...(grantOriginal.value[k]||[])].sort())));
 function selectGrantTable(name:string){selectedGrantTable.value=name}
 function toggleGrantTable(t:DataRow,enabled:boolean){const k=grantKey(t.sourceId,t.tableName);grantFields.value[k]=enabled?[...t.columns]:[];}
-function toggleGrantAll(){if(!activeOption.value)return;grantFields.value[activeKey.value]=selectedAll.value?[]:[...activeOption.value.columns]}
+function toggleGrantAll(){if(!activeOption.value||!activeTableEnabled.value)return;grantFields.value[activeKey.value]=selectedAll.value?[]:[...activeOption.value.columns]}
 async function loadGrantOptions(){if(!selected.value||props.user.roleCode!=='ADMIN')return;grantBusy.value=true;
  try{const all=await api<DataRow[]>('/api/agents/'+selected.value.id+'/grant-options');grantOptions.value=all;
   grantOriginal.value={};grantFields.value={};for(const t of all){const k=grantKey(t.sourceId,t.tableName);grantOriginal.value[k]=[...t.selectedColumns];grantFields.value[k]=[...t.selectedColumns]}
@@ -58,7 +60,7 @@ onMounted(async()=>{await refresh();if(props.initialDetailId){const item=rows.va
  <a-table-column title="所属用户" data-index="ownerName"/>
  <a-table-column title="状态"><template #default="{record}"><a-tag :color="status(record)==='正常'?'green':'red'">{{status(record)}}</a-tag></template></a-table-column>
  <a-table-column title="最近访问"><template #default="{record}">{{stamp(record.lastAccess)}}</template></a-table-column>
- <a-table-column title="操作" :width="190"><template #default="{record}"><a-space size="small" class="table-row-actions"><a-button class="row-view-btn" @click="open(record,'view')">查看</a-button><a-dropdown v-if="user.roleCode==='ADMIN'" :trigger="['click']"><a-button class="row-more-btn">更多 <svg class="row-more-chevron" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></a-button><template #overlay><a-menu class="row-more-menu"><a-menu-item @click="open(record,'edit')"><span class="row-menu-icon">✎</span>编辑授权</a-menu-item><a-menu-item :disabled="!!record.revokedAt" @click="confirm(record.enabled?'确认停用此 Agent？停用后原 Token 暂时无法访问。':'确认启用此 Agent？启用后原 Token 将恢复访问（仍需有效期和权限满足条件）。',()=>toggleAgent(record))"><span class="row-menu-icon">◷</span>{{record.revokedAt?'已永久撤销':record.enabled?'停用 Agent':'启用 Agent'}}</a-menu-item><a-menu-item :disabled="!!record.revokedAt||!record.enabled" danger @click="confirm('确认撤销 Agent？Token 将立即失效且无法恢复。',()=>revokeAgent(record))"><span class="row-menu-icon">⊘</span>撤销 Agent</a-menu-item><a-menu-divider/><a-menu-item danger @click="confirm('确定永久删除 Agent「'+record.name+'」？此操作不可恢复；有规则或访问历史的 Agent 只能撤销。',()=>deleteAgent(record))"><span class="row-menu-icon">♜</span>删除 Agent</a-menu-item></a-menu></template></a-dropdown></a-space></template></a-table-column>
+ <a-table-column title="操作" :width="190"><template #default="{record}"><a-space size="small" class="table-row-actions"><a-button class="row-view-btn" @click="open(record,'view')">查看</a-button><a-dropdown v-if="user.roleCode==='ADMIN'" :trigger="['click']"><a-button class="row-more-btn">更多 <svg class="row-more-chevron" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></a-button><template #overlay><a-menu class="row-more-menu"><a-menu-item @click="open(record,'edit')"><span class="row-menu-icon">✎</span>编辑授权</a-menu-item><a-menu-item :disabled="!!record.revokedAt" @click="confirm(record.enabled?'确认停用此 Agent？停用后原 Token 暂时无法访问。':'确认启用此 Agent？启用后原 Token 将恢复访问（仍需有效期和权限满足条件）。',()=>toggleAgent(record))"><span class="row-menu-icon">◷</span>{{record.revokedAt?'已永久撤销':record.enabled?'停用 Agent':'启用 Agent'}}</a-menu-item><a-menu-item :disabled="!!record.revokedAt||!record.enabled" danger @click="confirm('确认撤销 Agent？Token 将立即失效且无法恢复。',()=>revokeAgent(record))"><span class="row-menu-icon">⊘</span>撤销 Agent</a-menu-item><a-menu-divider/><a-menu-item danger :disabled="!!record.enabled" @click="confirm('确定永久删除 Agent「'+record.name+'」？此操作不可恢复；有规则或访问历史的 Agent 只能撤销。',()=>deleteAgent(record))"><span class="row-menu-icon">♜</span>删除 Agent</a-menu-item></a-menu></template></a-dropdown></a-space></template></a-table-column>
  </a-table></section>
  <section v-else class="panel detail-page" aria-label="Agent 详情页面">
  <teleport to="#workspace-actions"><a-button @click="selected=null">返回 Agent 列表</a-button></teleport>
@@ -89,14 +91,23 @@ onMounted(async()=>{await refresh();if(props.initialDetailId){const item=rows.va
       <div class="agent-grant-pick-source"><span>数据源</span><a-select :value="grantSource||undefined" placeholder="请选择数据源" :options="groupedGrants.map(x=>({value:x.sourceId,label:x.name}))" @change="(value:string)=>{grantSource=value;selectedGrantTable='';grantSearch=''}"/></div>
       <div class="picker-two-pane">
        <div class="picker-tables"><div class="picker-pane-head">数据表 <span>{{visibleGrantTables.length}}</span></div><a-input v-model:value="grantSearch" class="picker-search" allow-clear placeholder="搜索数据表"/>
-        <div class="picker-list"><div v-for="item in visibleGrantTables" :key="item.tableName" class="source-table-choice" :class="{active:selectedGrantTable===item.tableName}"><a-checkbox v-if="viewMode==='edit'" :checked="!!grantFields[grantKey(item.sourceId,item.tableName)]?.length" @change="toggleGrantTable(item,$event.target.checked)"/><button type="button" @click="selectGrantTable(item.tableName)">{{item.tableName}}</button></div><a-empty v-if="!visibleGrantTables.length" :image="undefined" description="暂无可选数据表"/></div>
+        <div class="picker-list"><div v-for="item in visibleGrantTables" :key="item.tableName" class="source-table-choice" :class="{active:selectedGrantTable===item.tableName}">
+         <a-checkbox v-if="viewMode==='edit'" :checked="!!grantFields[grantKey(item.sourceId,item.tableName)]?.length" :disabled="grantBusy" @change="toggleGrantTable(item,$event.target.checked)"/>
+         <span v-else class="picker-checkbox">{{columnsFor(item).length?'✓':''}}</span>
+         <button type="button" @click="selectGrantTable(item.tableName)">{{item.tableName}}</button>
+         <small v-if="(viewMode==='edit'?grantFields[grantKey(item.sourceId,item.tableName)]?.length:columnsFor(item).length)">已授权</small>
+        </div><a-empty v-if="!visibleGrantTables.length" :image="undefined" description="暂无数据表"/></div>
        </div>
-       <div class="picker-columns"><div class="picker-pane-head"><span>字段 <span>{{viewMode==='edit'?selectedColumns.length:activeGrantRow?columnsFor(activeGrantRow).length:0}}</span></span><a-button v-if="viewMode==='edit'" type="link" :disabled="!activeOption" @click="toggleGrantAll">{{selectedAll?'取消全选':'全选'}}</a-button></div>
-        <template v-if="activeGrantRow"><a-checkbox-group v-if="viewMode==='edit'" v-model:value="grantFields[activeKey]" :options="(activeOption?.columns||[]).map((c:string)=>({label:c,value:c}))" class="preapply-column-grid"/><div v-else class="agent-grant-columns agent-grant-pane-columns"><span v-for="c in columnsFor(activeGrantRow)" :key="c.columnName" class="agent-grant-column">{{c.columnName}}</span></div></template><a-empty v-else :image="undefined" description="请选择左侧数据表"/>
+       <div class="picker-columns"><div class="picker-pane-head"><span>字段 <span>{{viewMode==='edit'?selectedColumns.length:activeGrantRow?columnsFor(activeGrantRow).length:0}} / {{viewMode==='edit'?(activeOption?.columns||[]).length:activeGrantRow?columnsFor(activeGrantRow).length:0}}</span></span>
+        <a-button v-if="viewMode==='edit'" type="link" size="small" :disabled="!activeOption||!activeTableEnabled||grantBusy" @click="toggleGrantAll">{{selectedAll?'取消全选':'全选'}}</a-button></div>
+        <div v-if="activeGrantRow" class="source-field-list">
+         <template v-if="viewMode==='edit'"><div v-for="column in activeOption?.columns||[]" :key="column" class="source-field-row"><a-checkbox :checked="selectedColumns.includes(column)" :disabled="!activeTableEnabled||grantBusy" @change="setGrantField(column,$event.target.checked)">{{column}}</a-checkbox></div></template>
+         <template v-else><div v-for="c in columnsFor(activeGrantRow)" :key="c.columnName" class="source-field-row"><a-checkbox checked disabled>{{c.columnName}}</a-checkbox></div></template>
+        </div><a-empty v-else :image="undefined" description="请选择左侧数据表"/>
        </div>
       </div>
      </div>
-     <div class="grant-limit"><span>最大读取行数</span><strong>200 行</strong><a-button v-if="viewMode==='edit'" type="primary" :loading="grantBusy" :disabled="!grantDirty" @click="saveGrantChanges">保存授权</a-button></div>
+     <div class="source-grant-footer"><span class="subtle">最大读取行数：200 行 · 取消表勾选将清空字段，点击保存后生效。</span><a-button v-if="viewMode==='edit'" type="primary" :loading="grantBusy" :disabled="!grantDirty" @click="saveGrantChanges">保存</a-button></div>
      <p class="subtle">Agent 只能读取平台白名单与自身授权的交集。</p>
     </a-tab-pane>
     <a-tab-pane key="usage" tab="使用情况">
