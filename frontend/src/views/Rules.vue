@@ -31,8 +31,8 @@ watch(selected,value=>emit('detail-change',{open:Boolean(value),name:String(valu
 onMounted(()=>void refresh());defineExpose({refresh});
 </script>
 <template>
- <section v-if="!selected" class="panel"><teleport to="#workspace-actions"><a-button type="primary" @click="openCreate">＋ 新建规则</a-button></teleport>
- <div class="toolbar"><a-input-search v-model:value="search" allow-clear class="search" placeholder="搜索规则名称或适用范围"/></div>
+ <section v-if="!selected" class="panel">
+ <div class="toolbar"><a-button type="primary" @click="openCreate">＋ 新建规则</a-button><a-input-search v-model:value="search" allow-clear class="search" placeholder="搜索规则名称或适用范围"/></div>
  <a-table :data-source="filtered" row-key="id" :pagination="page" :scroll="{x:850}">
  <a-table-column title="规则名称"><template #default="{record}"><a-button type="link" class="name-link" @click="selected=record">{{record.name}}</a-button></template></a-table-column>
  <a-table-column title="适用范围"><template #default="{record}">{{record.tableName==='*'?'全部表':record.tableName}}</template></a-table-column>

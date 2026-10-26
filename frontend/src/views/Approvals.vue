@@ -2,7 +2,7 @@
 import {computed,onMounted,ref,watch} from 'vue';
 import {api,stamp,match,page,fail,stateName,stateColor,type DataRow,type User} from '../api';
 const props=defineProps<{user:User;initialScope?:string}>();
-const tab=ref(props.initialScope||(props.user.roleCode==='READER'?'mine':'pending')),rows=ref<DataRow[]>([]),search=ref(''),detail=ref<DataRow|null>(null),reason=ref(''),busy=ref(false);
+const tab=ref(props.initialScope||(props.user.roleCode==='READER'?'mine':'pending')),rows=ref<DataRow[]>([]),search=ref(''),detail=ref<DataRow|null>(null),reason=ref(''),busy=ref(false),requestHelpOpen=ref(false);
 const filtered=computed(()=>rows.value.filter(r=>match(r,search.value,['id','requesterName','agentName','tableName','sourceName'])));
 const canApprove=computed(()=>detail.value?.status==='PENDING'&&detail.value.approverUsername===props.user.username
  &&detail.value.ownerUsername!==props.user.username&&new Date(detail.value.expiresAt).getTime()>Date.now());
@@ -18,6 +18,7 @@ onMounted(()=>void refresh());defineExpose({refresh});
 <template>
 <section v-if="!detail" class="panel">
  <div class="toolbar stack">
+ <a-button type="primary" @click="requestHelpOpen=true">＋ 发起访问申请</a-button>
  <a-radio-group :value="tab" button-style="solid" @change="selectTab($event.target.value)">
   <a-radio-button v-if="user.roleCode!=='READER'" value="pending">待我审批</a-radio-button>
   <a-radio-button value="mine">我发起的</a-radio-button>
@@ -57,9 +58,15 @@ onMounted(()=>void refresh());defineExpose({refresh});
   </a-descriptions>
   <template v-if="canApprove"><a-form layout="vertical" style="margin-top:20px"><a-form-item label="审批意见" required><a-textarea v-model:value="reason" :rows="3" :maxlength="512"/></a-form-item></a-form>
    <div class="approval-buttons"><a-button type="primary" :loading="busy" @click="decide('approve')">通过</a-button><a-button :loading="busy" @click="decide('reject')">拒绝</a-button></div>
-  </template>
+
+</template>
   <a-alert v-else-if="detail.status==='APPROVED'" style="margin-top:20px" type="info" message="审批已通过，Agent 可重试完全相同的请求一次。"/>
  </template>
 </div>
 </section>
+  <a-modal v-model:open="requestHelpOpen" title="发起访问申请" :footer="null">
+ <p>访问申请由 Agent 发起：当 Agent 通过 MCP 读取已授权的数据表，且命中“需要审批”的访问规则时，系统会自动生成申请。</p>
+ <p>请先在「Agent 管理」完成 Agent 和数据表授权，再在「访问规则」配置审批策略。创建申请后，在「我发起的」查看进度。</p>
+ <a-button type="primary" @click="requestHelpOpen=false">知道了</a-button>
+</a-modal>
 </template>

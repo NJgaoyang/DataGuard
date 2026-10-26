@@ -20,7 +20,9 @@ const theme={token:{colorPrimary:'#1766e8',colorSuccess:'#18a76e',colorError:'#e
   colorBorder:'#e5eaf1',colorBgLayout:'#f7f9fc',borderRadius:6,fontSize:13,motion:false},
   components:{Table:{headerBg:'#f9fbfd',headerColor:'#728097',cellPaddingBlock:9,cellPaddingInline:12},
    Button:{borderRadius:5},Menu:{itemSelectedBg:'#eaf2ff'}}};
-const user=ref<User|null>(null),ready=ref(false),page=ref('dashboard'),
+const allowedPages=['dashboard','sources','agents','rules','approvals','records','settings'];
+function urlPage(){const value=new URLSearchParams(window.location.search).get('page');return value&&allowedPages.includes(value)?value:'dashboard';}
+const user=ref<User|null>(null),ready=ref(false),page=ref(urlPage()),
   loading=ref(false),error=ref(''),
   currentPassword=ref(''),nextPassword=ref(''),changeOpen=ref(false),passwordBusy=ref(false),
   menuOpen=ref(false),reloadKey=ref(0);
@@ -47,7 +49,7 @@ async function readNotice(id:number){
 }
 let noticeInterval:ReturnType<typeof setInterval>|undefined;
 watch(user,v=>{if(v)void fetchNotices();else{unread.value=0;notices.value=[]}});
-onUnmounted(()=>{if(noticeInterval)clearInterval(noticeInterval)});
+onUnmounted(()=>{window.removeEventListener('popstate',onPopState);if(noticeInterval)clearInterval(noticeInterval)});
 const loginModel=reactive({username:'',password:''});
 const passwordVisible=ref(false);
 const items=[
@@ -82,10 +84,13 @@ function navigate(name:string,condition?:{status?:string;scope?:string}){
  if(name===page.value&&detailOpen.value)reloadKey.value++;
  detailOpen.value=false;detailName.value='';recordId.value=null;recordStatus.value=condition?.status||'all';approvalScope.value=condition?.scope||'';
  page.value=name;menuOpen.value=false;
+ const url=new URL(window.location.href);if(name==='dashboard')url.searchParams.delete('page');else url.searchParams.set('page',name);
+ window.history.pushState({page:name},'',url.pathname+url.search+url.hash);
 }
 function openRecord(id:string){detailOpen.value=true;detailName.value='';recordId.value=id;page.value='records';menuOpen.value=false}
+function onPopState(){const next=urlPage();if(next!==page.value){page.value=next;reloadKey.value++;}else if(detailOpen.value){reloadKey.value++;}detailOpen.value=false;detailName.value='';recordId.value=null;menuOpen.value=false;}
 function refresh(){detailOpen.value=false;detailName.value='';recordId.value=null;reloadKey.value++}
-onMounted(()=>{void start();noticeInterval=setInterval(()=>{if(user.value)void fetchNotices()},60000)});
+onMounted(()=>{window.addEventListener('popstate',onPopState);void start();noticeInterval=setInterval(()=>{if(user.value)void fetchNotices()},60000)});
 </script>
 <template>
 <a-config-provider :theme="theme" :locale="zhCN">

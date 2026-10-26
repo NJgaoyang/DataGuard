@@ -47,8 +47,8 @@ watch(selected,value=>emit('detail-change',{open:Boolean(value),name:String(valu
 onMounted(()=>void refresh());defineExpose({refresh});
 </script>
 <template>
-<section v-if="!selected" class="panel"><teleport to="#workspace-actions"><a-button type="primary" @click="create">＋ 新增数据源</a-button></teleport>
- <div class="toolbar"><a-input-search class="search" v-model:value="search" allow-clear placeholder="搜索数据库名称、类型或主机"/></div>
+<section v-if="!selected" class="panel">
+ <div class="toolbar"><a-button type="primary" @click="create">＋ 新增数据源</a-button><a-input-search class="search" v-model:value="search" allow-clear placeholder="搜索数据库名称、类型或主机"/></div>
  <a-table :data-source="filtered" row-key="id" :pagination="page" :scroll="{x:740}">
   <a-table-column title="名称"><template #default="{record}"><a-button type="link" class="name-link" @click="open(record)">{{record.name}}</a-button></template></a-table-column>
   <a-table-column title="类型" data-index="type"/>
