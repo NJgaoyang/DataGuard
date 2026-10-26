@@ -42,7 +42,8 @@ class SecurityConfig {
  @Bean SecurityFilterChain security(HttpSecurity http,JdbcTemplate db,SecurityControls controls) throws Exception {
   http.csrf(csrf->csrf.ignoringRequestMatchers(PathPatternRequestMatcher.withDefaults().matcher("/mcp")))
    .authorizeHttpRequests(auth->auth
-    .requestMatchers("/api/csrf","/mcp","/actuator/health","/assets/**","/","/index.html","/favicon.ico").permitAll()
+    .requestMatchers("/api/csrf","/mcp","/actuator/health","/assets/**","/","/index.html","/favicon.ico",
+      "/dashboard","/sources","/agents","/rules","/approvals","/records","/records/*","/settings").permitAll()
     .anyRequest().authenticated())
    .exceptionHandling(e->e.defaultAuthenticationEntryPointFor(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED),
       PathPatternRequestMatcher.withDefaults().matcher("/api/**")))

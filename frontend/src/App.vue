@@ -7,6 +7,7 @@ import {
 } from '@ant-design/icons-vue';
 import {api,fail,initCsrf,login,logout,type User,type DataRow} from './api';
 import zhCN from 'ant-design-vue/es/locale/zh_CN';
+import {useRoute,useRouter} from 'vue-router';
 import Dashboard from './views/Dashboard.vue';
 import Sources from './views/Sources.vue';
 import Agents from './views/Agents.vue';
@@ -20,9 +21,10 @@ const theme={token:{colorPrimary:'#1766e8',colorSuccess:'#18a76e',colorError:'#e
   colorBorder:'#e5eaf1',colorBgLayout:'#f7f9fc',borderRadius:6,fontSize:13,motion:false},
   components:{Table:{headerBg:'#f9fbfd',headerColor:'#728097',cellPaddingBlock:9,cellPaddingInline:12},
    Button:{borderRadius:5},Menu:{itemSelectedBg:'#eaf2ff'}}};
+const route=useRoute(),router=useRouter();
 const allowedPages=['dashboard','sources','agents','rules','approvals','records','settings'];
-function urlPage(){const value=new URLSearchParams(window.location.search).get('page');return value&&allowedPages.includes(value)?value:'dashboard';}
-const user=ref<User|null>(null),ready=ref(false),page=ref(urlPage()),
+function routePage(){const value=String(route.name||'dashboard');return value==='record-detail'?'records':allowedPages.includes(value)?value:'dashboard';}
+const user=ref<User|null>(null),ready=ref(false),page=ref(routePage()),
   loading=ref(false),error=ref(''),
   currentPassword=ref(''),nextPassword=ref(''),changeOpen=ref(false),passwordBusy=ref(false),
   menuOpen=ref(false),reloadKey=ref(0);
@@ -49,7 +51,7 @@ async function readNotice(id:number){
 }
 let noticeInterval:ReturnType<typeof setInterval>|undefined;
 watch(user,v=>{if(v)void fetchNotices();else{unread.value=0;notices.value=[]}});
-onUnmounted(()=>{window.removeEventListener('popstate',onPopState);if(noticeInterval)clearInterval(noticeInterval)});
+onUnmounted(()=>{if(noticeInterval)clearInterval(noticeInterval)});
 const loginModel=reactive({username:'',password:''});
 const passwordVisible=ref(false);
 const items=[
@@ -84,13 +86,18 @@ function navigate(name:string,condition?:{status?:string;scope?:string}){
  if(name===page.value&&detailOpen.value)reloadKey.value++;
  detailOpen.value=false;detailName.value='';recordId.value=null;recordStatus.value=condition?.status||'all';approvalScope.value=condition?.scope||'';
  page.value=name;menuOpen.value=false;
- const url=new URL(window.location.href);if(name==='dashboard')url.searchParams.delete('page');else url.searchParams.set('page',name);
- window.history.pushState({page:name},'',url.pathname+url.search+url.hash);
+ void router.push({name:name as 'dashboard',query:condition?.scope?{scope:condition.scope}:condition?.status?{status:condition.status}:{}});
 }
-function openRecord(id:string){detailOpen.value=true;detailName.value='';recordId.value=id;page.value='records';menuOpen.value=false}
-function onPopState(){const next=urlPage();if(next!==page.value){page.value=next;reloadKey.value++;}else if(detailOpen.value){reloadKey.value++;}detailOpen.value=false;detailName.value='';recordId.value=null;menuOpen.value=false;}
-function refresh(){detailOpen.value=false;detailName.value='';recordId.value=null;reloadKey.value++}
-onMounted(()=>{window.addEventListener('popstate',onPopState);void start();noticeInterval=setInterval(()=>{if(user.value)void fetchNotices()},60000)});
+function openRecord(id:string){detailOpen.value=true;detailName.value='';recordId.value=id;page.value='records';menuOpen.value=false;void router.push({name:'record-detail',params:{id}})}
+watch(()=>route.fullPath,()=>{
+ const next=routePage();const id=route.name==='record-detail'?String(route.params.id||''):'';
+ if(next!==page.value||id!==recordId.value){page.value=next;recordId.value=id||null;reloadKey.value++;}
+ if(!id){detailOpen.value=false;detailName.value='';}
+ recordStatus.value=String(route.query.status||'all');approvalScope.value=String(route.query.scope||'');
+ menuOpen.value=false;
+});
+function refresh(){if(route.name==='record-detail')void router.replace({name:'records'});detailOpen.value=false;detailName.value='';recordId.value=null;reloadKey.value++}
+onMounted(()=>{if(route.name==='record-detail'){recordId.value=String(route.params.id||'');detailOpen.value=true;}approvalScope.value=String(route.query.scope||'');recordStatus.value=String(route.query.status||'all');void start();noticeInterval=setInterval(()=>{if(user.value)void fetchNotices()},60000)});
 </script>
 <template>
 <a-config-provider :theme="theme" :locale="zhCN">
@@ -183,7 +190,7 @@ onMounted(()=>{window.addEventListener('popstate',onPopState);void start();notic
    <Agents v-else-if="page==='agents'" :key="'agents'+reloadKey" :user="user" @detail-change="onDetailChange"/>
    <Rules v-else-if="page==='rules'&&admin" :key="'rules'+reloadKey" @detail-change="onDetailChange"/>
    <Approvals v-else-if="page==='approvals'" :key="'approvals'+reloadKey" :user="user" :initial-scope="approvalScope" @detail-change="onDetailChange"/>
-   <Records v-else-if="page==='records'" :key="'records'+reloadKey" :initial-record-id="recordId" :initial-status="recordStatus" @close-detail="recordId=null" @detail-change="onDetailChange"/>
+   <Records v-else-if="page==='records'" :key="'records'+reloadKey" :initial-record-id="recordId" :initial-status="recordStatus" @close-detail="recordId=null;void router.push({name:'records'})" @detail-change="onDetailChange"/>
    <Settings v-else-if="page==='settings'" :key="'settings'+reloadKey" :user="user" @change-password="changeOpen=true"/>
   </main>
  </div>
