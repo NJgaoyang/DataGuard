@@ -13,6 +13,7 @@ export async function api<T=any>(path:string,method='GET',body?:unknown):Promise
    body:body===undefined?undefined:JSON.stringify(body)});
  if(r.status===401)throw Error('会话已失效，请重新登录');
  if(r.status===428)throw Error('请先修改初始密码');
+ if(r.status===403&&path==='/api/password')throw Error('修改密码被拒绝：请确认当前密码正确，刷新页面后重新登录再试');
  if(!r.ok){let d:any;try{d=await r.json()}catch{}throw Error(d?.message||d?.detail||'请求失败 ('+r.status+')');}
  return r.status===204?undefined as T:await r.json();
 }
@@ -21,6 +22,9 @@ export async function login(username:string,password:string){
  const r=await fetch('/login',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/x-www-form-urlencoded','X-CSRF-TOKEN':csrf},
    body:new URLSearchParams({username,password})});
  if(!r.ok)throw Error('用户名或密码错误');
+ // Spring Security rotates the CSRF token upon successful authentication.
+ // Re-fetch it in the authenticated session before any password/admin POST.
+ await initCsrf();
  return api<User>('/api/session');
 }
 export async function logout(){
