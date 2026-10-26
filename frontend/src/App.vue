@@ -60,7 +60,7 @@ onMounted(()=>void start());
  <main v-else-if="!user" class="auth-layout">
   <section class="auth-brand-panel" aria-label="DataGuard 产品介绍">
    <div class="auth-brand-top">
-    <img class="auth-brand-mark" src="/dataguard-mark.svg" alt="DataGuard" width="54" height="59"/>
+    <img class="auth-brand-mark" src="/assets/dataguard-mark.svg" alt="DataGuard" width="54" height="59"/>
     <span class="auth-brand-copy"><strong class="brand-wordmark">Data<span>Guard</span></strong><small>数据守卫</small></span>
    </div>
    <div class="auth-brand-body">
@@ -92,7 +92,7 @@ onMounted(()=>void start());
  <div v-else class="app-root">
   <button v-if="menuOpen" class="mobile-mask" aria-label="关闭导航" @click="menuOpen=false"/>
   <aside class="sidebar" :class="{'open':menuOpen}">
-   <button class="brand" @click="navigate('dashboard')"><span class="brand-mark"><img class="sidebar-brand-mark" src="/dataguard-mark.svg" alt=""/></span><strong>DataGuard</strong></button>
+   <button class="brand" @click="navigate('dashboard')"><span class="brand-mark"><img class="sidebar-brand-mark" src="/assets/dataguard-mark.svg" alt=""/></span><strong>DataGuard</strong></button>
    <nav aria-label="主导航">
     <template v-for="(item,index) in visibleItems" :key="item.id">
      <div v-if="item.id==='settings'" class="nav-divider"></div>

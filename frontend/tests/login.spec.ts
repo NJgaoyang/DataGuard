@@ -21,6 +21,8 @@ test('login form actually submits, reports invalid credentials, and opens the wo
   body:JSON.stringify({stats:{requests:0,pending:0,denied:0,success:0},recent:[]})}));
  await page.goto('/');
  await expect(page.locator('.auth-layout')).toBeVisible();
+ await expect(page.locator('.auth-brand-panel')).toHaveCSS('background-color','rgb(224, 248, 243)');
+ await expect(page.locator('.auth-brand-mark')).toHaveJSProperty('naturalWidth',150);
  await page.locator('.auth-login-card .auth-submit').click();
  expect(await page.locator('.auth-form input[autocomplete="username"]').evaluate((input:HTMLInputElement)=>input.validity.valueMissing)).toBe(true);
  expect(submissions).toHaveLength(0);
