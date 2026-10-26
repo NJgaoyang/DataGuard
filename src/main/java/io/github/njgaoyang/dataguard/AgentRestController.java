@@ -30,7 +30,7 @@ class AgentRestController {
  @PostMapping("/queries") Object query(@RequestHeader(value="Authorization",required=false) String bearer,@RequestBody Map<String,Object> request){
   if(request==null)throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Query required");
   Object raw=request.getOrDefault("limit",10);
-  if(!(raw instanceof Integer limit)||limit<1||limit>200)throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Limit must be 1-200");
+  if(!(raw instanceof Integer limit)||limit<1||limit>controls.setting("max_rows_per_query",200))throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Limit exceeds configured per-query maximum");
   return call(bearer,"execute_readonly",request,limit);
  }
  @GetMapping("/requests/{id}") Object request(@RequestHeader(value="Authorization",required=false) String bearer,@PathVariable String id){return call(bearer,"get_access_request",Map.of("requestId",id),0);}

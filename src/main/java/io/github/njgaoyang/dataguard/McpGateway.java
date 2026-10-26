@@ -193,7 +193,7 @@ class McpGateway {
   String agentId=(String)agent.get("id"),sourceId=Guard.id(str(input,"sourceId"));
   String table=Guard.identifier(str(input,"tableName"));
   Object requestedLimit=input.getOrDefault("limit",10);
-  if(!(requestedLimit instanceof Integer limit)||limit<1||limit>200)
+  if(!(requestedLimit instanceof Integer limit)||limit<1||limit>securityControls.setting("max_rows_per_query",200))
    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Read row limit is 1 to 200");
   if(!(input.get("columns") instanceof List<?> raw)||raw.isEmpty()||raw.size()>100)
    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Explicit columns required");

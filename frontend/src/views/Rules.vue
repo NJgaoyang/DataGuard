@@ -2,6 +2,8 @@
 import {computed,onMounted,ref,watch} from 'vue';
 import {api,match,page,fail,confirm,type DataRow} from '../api';
 const props=defineProps<{initialDetailId?:string}>();
+const maxRowsPerQuery=ref(200);
+async function loadQueryLimit(){try{const limits=await api<{maxRowsPerQuery:number}>('/api/security/limits');maxRowsPerQuery.value=limits.maxRowsPerQuery}catch(e){fail(e)}}
 const rows=ref<DataRow[]>([]),sources=ref<DataRow[]>([]),agents=ref<DataRow[]>([]),approvers=ref<DataRow[]>([]),search=ref(''),selected=ref<DataRow|null>(null),createOpen=ref(false),editId=ref<string|null>(null),busy=ref(false),ruleTables=ref<DataRow[]>([]),ruleColumns=ref<DataRow[]>([]);
 const defaultRule=()=>({name:'',sourceId:'',agentId:'',tableName:'*',columnName:'',minRows:1,maxRows:50,action:'ALLOW',priority:100,approverId:''});
 const form=ref(defaultRule());
@@ -33,7 +35,7 @@ async function toggle(row:DataRow){try{await api('/api/rules/'+row.id+'/toggle',
 const condition=(row:DataRow)=>'读取 '+row.minRows+'～'+row.maxRows+' 行'+(row.columnName?' · '+row.columnName:'');
 const emit=defineEmits<{'detail-change':[value:{open:boolean;name:string;id:string}]}>();
 watch(selected,value=>emit('detail-change',{open:Boolean(value),name:String(value?.name||''),id:String(value?.id||'')}));
-onMounted(async()=>{await refresh();const row=rows.value.find(x=>x.id===props.initialDetailId);if(row)selected.value=row});defineExpose({refresh});
+onMounted(async()=>{await loadQueryLimit();await refresh();const row=rows.value.find(x=>x.id===props.initialDetailId);if(row)selected.value=row});defineExpose({refresh});
 </script>
 <template>
  <section v-if="!selected" class="panel">
@@ -68,8 +70,8 @@ onMounted(async()=>{await refresh();const row=rows.value.find(x=>x.id===props.in
  <a-form-item label="Agent"><a-select v-model:value="form.agentId" :options="[{value:'',label:'全部 Agent'},...agents.map(a=>({value:a.id,label:a.name}))]"/></a-form-item>
  <a-form-item label="数据表"><a-select v-model:value="form.tableName" :disabled="!form.sourceId" @change="loadRuleColumns" :options="[{value:'*',label:'全部表'},...ruleTables.map(t=>({value:t.tableName,label:t.tableName}))]"/></a-form-item>
  <a-form-item label="指定字段（可选）"><a-select v-model:value="form.columnName" :disabled="!form.sourceId||form.tableName==='*'" :options="[{value:'',label:'全部字段'},...ruleColumns.map(c=>({value:c.columnName,label:c.columnName}))]"/></a-form-item>
- <a-form-item label="最少读取行数"><a-input-number v-model:value="form.minRows" :min="1" :max="200" style="width:100%"/></a-form-item>
- <a-form-item label="最多读取行数"><a-input-number v-model:value="form.maxRows" :min="1" :max="200" style="width:100%"/></a-form-item>
+ <a-form-item label="最少读取行数"><a-input-number v-model:value="form.minRows" :min="1" :max="maxRowsPerQuery" style="width:100%"/></a-form-item>
+ <a-form-item label="最多读取行数"><a-input-number v-model:value="form.maxRows" :min="1" :max="maxRowsPerQuery" style="width:100%"/></a-form-item>
  <a-form-item label="动作"><a-select v-model:value="form.action" :options="Object.entries(labels).map(([value,label])=>({value,label}))"/></a-form-item>
  <a-form-item label="优先级"><a-input-number v-model:value="form.priority" :min="1" style="width:100%"/></a-form-item>
  <a-form-item v-if="form.action==='APPROVAL'" class="full" label="审批人" required><a-select v-model:value="form.approverId" :options="approvers.map(a=>({value:a.id,label:a.displayName}))"/></a-form-item>

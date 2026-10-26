@@ -4,6 +4,8 @@ import {computed,onMounted,ref,watch} from 'vue';
 import dayjs from 'dayjs';
 import {api,stamp,match,page,fail,confirm,stateName,stateColor,type DataRow,type User} from '../api';
 const props=defineProps<{user:User;initialDetailId?:string}>();
+const maxRowsPerQuery=ref(200);
+async function loadQueryLimit(){try{const limits=await api<{maxRowsPerQuery:number}>('/api/security/limits');maxRowsPerQuery.value=limits.maxRowsPerQuery}catch(e){fail(e)}}
 const rows=ref<DataRow[]>([]),sources=ref<DataRow[]>([]),users=ref<DataRow[]>([]),selected=ref<DataRow|null>(null),search=ref(''),tab=ref('grants'),secret=ref(''),createOpen=ref(false),form=ref({name:'',ownerId:'',expiresAt:'2099-01-31T23:59:59'}),grants=ref<DataRow>({tables:[],columns:[]}),
  sourceId=ref(''),tableName=ref(''),columnName=ref(''),expiry=ref(30),testResult=ref<DataRow|null>(null),testBusy=ref(false),rotationExpiry=ref('2099-01-31T23:59:59'),usage=ref<DataRow>({stats:{},recent:[]}),editingGrants=ref(false),grantBusy=ref(false),grantOptions=ref<DataRow[]>([]),grantFields=ref<Record<string,string[]>>({}),grantOriginal=ref<Record<string,string[]>>({}),viewMode=ref<'view'|'edit'>('view'),expandedSources=ref<string[]>([]),grantSource=ref(''),selectedGrantTable=ref(''),grantSearch=ref('');
 const mcpEndpoint=window.location.origin+'/mcp';
@@ -62,7 +64,7 @@ async function revokeAgent(row:DataRow){try{await api('/api/agents/'+row.id+'/re
 async function revoke(){if(selected.value)await revokeAgent(selected.value)}
 const emit=defineEmits<{'detail-change':[value:{open:boolean;name:string;id:string}]}>();
 watch(selected,value=>emit('detail-change',{open:Boolean(value),name:String(value?.name||''),id:String(value?.id||'')}));
-onMounted(async()=>{await refresh();if(props.initialDetailId){const item=rows.value.find(x=>x.id===props.initialDetailId);if(item)await open(item,'view')}});defineExpose({refresh});
+onMounted(async()=>{await loadQueryLimit();await refresh();if(props.initialDetailId){const item=rows.value.find(x=>x.id===props.initialDetailId);if(item)await open(item,'view')}});defineExpose({refresh});
 </script>
 <template>
 <section v-if="!selected" class="panel">
@@ -119,7 +121,7 @@ onMounted(async()=>{await refresh();if(props.initialDetailId){const item=rows.va
        </div>
       </div>
      </div>
-     <div class="source-grant-footer"><span class="subtle">最大读取行数：200 行 · 取消表勾选将清空字段，点击保存后生效。</span><a-button v-if="viewMode==='edit'" type="primary" :loading="grantBusy" :disabled="!grantDirty" @click="saveGrantChanges">保存</a-button></div>
+     <div class="source-grant-footer"><span class="subtle">最大读取行数：{{maxRowsPerQuery}} 行 · 取消表勾选将清空字段，点击保存后生效。</span><a-button v-if="viewMode==='edit'" type="primary" :loading="grantBusy" :disabled="!grantDirty" @click="saveGrantChanges">保存</a-button></div>
      <p class="subtle">Agent 只能读取平台白名单与自身授权的交集。</p>
     </a-tab-pane>
     <a-tab-pane key="usage" tab="使用情况">

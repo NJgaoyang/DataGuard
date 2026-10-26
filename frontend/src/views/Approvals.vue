@@ -2,6 +2,8 @@
 import {computed,onMounted,ref,watch} from 'vue';
 import {api,stamp,match,page,fail,stateName,stateColor,type DataRow,type User} from '../api';
 const props=defineProps<{user:User;initialScope?:string;initialDetailId?:string}>();
+const maxRowsPerQuery=ref(200);
+async function loadQueryLimit(){try{const limits=await api<{maxRowsPerQuery:number}>('/api/security/limits');maxRowsPerQuery.value=limits.maxRowsPerQuery}catch(e){fail(e)}}
 const tab=ref(props.initialScope||(props.user.roleCode==='ADMIN'?'all':props.user.roleCode==='READER'?'mine':'pending')),rows=ref<DataRow[]>([]),search=ref(''),detail=ref<DataRow|null>(null),approvalMode=ref(false),reason=ref(''),busy=ref(false),requestHelpOpen=ref(false),preapplyBusy=ref(false),preapplyAgents=ref<DataRow[]>([]),preapplyOptions=ref<DataRow[]>([]),preapplyLoading=ref(false),tableSearch=ref(''),preapplyForm=ref({agentId:'',sourceId:'',tableName:'',columns:[] as string[],requestedRows:50});
 const filtered=computed(()=>rows.value.filter(r=>match(r,search.value,['id','requesterName','agentName','tableName','sourceName'])));
 const canApprove=computed(()=>detail.value?.status==='PENDING'&&(detail.value.approverUsername===props.user.username||props.user.roleCode==='ADMIN')
@@ -42,7 +44,7 @@ async function decide(action:'approve'|'reject'){if(!detail.value)return;try{if(
  detail.value=null;reason.value='';await refresh()}catch(e){fail(e)}finally{busy.value=false}}
 const emit=defineEmits<{'detail-change':[value:{open:boolean;name:string;id:string}]}>();
 watch(detail,value=>emit('detail-change',{open:Boolean(value),name:value?'申请 #'+String(value.id||''):'',id:String(value?.id||'')}));
-onMounted(async()=>{await refresh();if(props.initialDetailId){try{detail.value=await api('/api/requests/'+props.initialDetailId)}catch(e){fail(e)}}});defineExpose({refresh});
+onMounted(async()=>{await loadQueryLimit();await refresh();if(props.initialDetailId){try{detail.value=await api('/api/requests/'+props.initialDetailId)}catch(e){fail(e)}}});defineExpose({refresh});
 </script>
 <template>
 <section v-if="!detail" class="panel">
@@ -111,7 +113,7 @@ onMounted(async()=>{await refresh();if(props.initialDetailId){try{detail.value=a
      <a-checkbox-group v-if="columnOptions.length" v-model:value="preapplyForm.columns" :options="columnOptions.map(value=>({label:value,value}))" class="preapply-column-grid"/><a-empty v-else :image="undefined" description="请先选择左侧数据表"/>
     </div>
    </div>
-   <a-form-item label="最大读取行数" required><a-input-number v-model:value="preapplyForm.requestedRows" :min="1" :max="200"/></a-form-item>
+   <a-form-item label="最大读取行数" required><a-input-number v-model:value="preapplyForm.requestedRows" :min="1" :max="maxRowsPerQuery"/></a-form-item>
   </a-form>
   <p class="subtle">仅显示当前 Agent 已授权的表和字段。选择数据表后默认勾选全部可读字段；取消勾选可缩小申请范围。实际请求需要字段顺序、行数和查询参数完全匹配。</p>
  </a-modal>
