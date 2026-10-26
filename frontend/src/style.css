@@ -489,3 +489,6 @@
 .table-row-actions .ant-btn.row-more-btn[aria-expanded="true"]{background:#edf3fc;color:#1766e8;border-color:#dbe6f6}
 .table-row-actions .row-more-chevron{display:block;flex:none;width:14px;height:14px;margin:0;transform:none;vertical-align:middle}
 .table-row-actions .ant-btn.row-more-btn:disabled{opacity:.48;cursor:not-allowed}
+
+.agent-secret-value{margin-top:16px;padding:14px 16px;background:#f7f9fc;border:1px solid #e4eaf2;border-radius:9px;color:#22324b;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;overflow-wrap:anywhere;user-select:text;line-height:1.7}
+.agent-secret-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:20px}

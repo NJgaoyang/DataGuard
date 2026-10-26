@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {message} from 'ant-design-vue';
 import {computed,onMounted,ref,watch} from 'vue';
 import dayjs from 'dayjs';
 import {api,stamp,match,page,fail,confirm,stateName,stateColor,type DataRow,type User} from '../api';
@@ -44,6 +45,7 @@ async function loadUsage(){if(!selected.value)return;try{usage.value=await api('
 watch(tab,next=>{if(next==='usage')void loadUsage()});
 async function openCreate(){try{if(props.user.roleCode==='ADMIN')users.value=await api('/api/users');form.value={name:'',ownerId:'',expiresAt:'2099-01-31T23:59:59'};createOpen.value=true}catch(e){fail(e)}}
 async function save(){try{const data=await api<DataRow>('/api/agents','POST',{...form.value,ownerId:form.value.ownerId||null});createOpen.value=false;secret.value=data.token;await refresh()}catch(e){fail(e)}}
+async function copySecret(){try{await navigator.clipboard.writeText(secret.value);message.success('令牌已复制')}catch{message.error('复制失败，请手动复制令牌')}}
 async function deleteAgent(row:DataRow){try{await api('/api/agents/'+row.id,'DELETE');if(selected.value?.id===row.id)selected.value=null;await refresh()}catch(e){fail(e)}}
 async function toggleAgent(row:DataRow){try{await api('/api/agents/'+row.id+'/toggle','POST');await refresh()}catch(e){fail(e)}}
 async function reactivateAgent(row:DataRow){try{
@@ -139,8 +141,9 @@ onMounted(async()=>{await refresh();if(props.initialDetailId){const item=rows.va
    <a-form-item label="有效截止时间" required><a-date-picker :value="dayjs(form.expiresAt)" show-time format="YYYY-MM-DD HH:mm:ss" style="width:100%" :disabled-date="(date:any)=>date.isBefore(dayjs(),'day')||date.isAfter(dayjs('2099-12-31'),'day')" @change="(date:any)=>form.expiresAt=date?date.format('YYYY-MM-DDTHH:mm:ss'):''"/></a-form-item>
   </a-form>
  </a-modal>
- <a-modal :open="!!secret" title="保存 Agent 访问令牌" :mask-closable="false" :closable="false" ok-text="我已保存" @ok="secret=''">
-  <a-alert type="warning" show-icon message="令牌仅展示一次，请在安全位置保存，不能提交到代码仓库。"/>
-  <a-textarea :value="secret" readonly :rows="3" style="margin-top:16px"/>
+ <a-modal :open="!!secret" title="Agent 访问令牌" :mask-closable="false" :closable="false" :footer="null">
+  <a-alert type="warning" show-icon message="令牌仅展示一次，请复制并安全保存，关闭后无法再次查看。"/>
+  <div class="agent-secret-value" role="textbox" aria-label="只读 Agent 访问令牌" aria-readonly="true">{{secret}}</div>
+  <div class="agent-secret-actions"><a-button type="primary" @click="copySecret">复制令牌</a-button><a-button @click="secret=''">关闭</a-button></div>
  </a-modal>
 </template>
