@@ -21,6 +21,6 @@ onMounted(()=>void refresh());defineExpose({refresh});
   <a-table-column title="访问对象" data-index="tableName"/>
   <a-table-column title="请求行数" data-index="requestedRows"/>
   <a-table-column title="状态"><template #default="{record}"><a-tag :color="stateColor(record.status)">{{stateName[record.status]||record.status}}</a-tag></template></a-table-column>
-  <a-table-column title="操作"><template #default="{record}"><a-button type="link" @click="emit('openRecord',record.id)">查看</a-button></template></a-table-column>
+  <a-table-column title="操作" :width="110"><template #default="{record}"><a-space class="table-row-actions"><a-button class="row-view-btn" @click="emit('openRecord',record.id)">查看</a-button></a-space></template></a-table-column>
  </a-table></section></a-spin>
 </template>
