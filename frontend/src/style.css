@@ -150,7 +150,7 @@
 .app-root .topbar{background:#fcfdff;border-bottom-color:#e3ebf3}
 .app-root .topbar-actions{color:#4e647f}
 .app-root .avatar{background:#326ebd}
-.app-root .workspace{padding-top:101px}
+
 .app-root .workspace-head h1{color:#233952}
 .app-root .workspace-head .ant-btn{background:#fff;border-color:#dbe6f0}
 .app-root .panel{background:#fff;border-color:#e1eaf2;box-shadow:0 1px 3px #274e7708}
@@ -170,25 +170,17 @@
 .app-root .metric-decoration.stop{background:#ffe9ed;color:#d95164}
 .app-root .metric-decoration.check{background:#e4f7ee;color:#129a74}
 
-/* Top breadcrumb plus lightweight opened-page tabs from the reference. */
+/* Compact single-row breadcrumb header; no secondary tabs strip. */
 .app-root .topbar{justify-content:space-between;gap:12px}
 .console-breadcrumb{display:flex;align-items:center;min-width:0;gap:11px;font-size:13px;color:#8fa1b6;white-space:nowrap}
 .breadcrumb-home{border:0;background:transparent;color:#50647d;padding:5px 0;font-size:13px}
 .breadcrumb-home:hover{color:#286ec5}
 .crumb-divider{color:#b3c0ce}
 .breadcrumb-current{color:#667e9d;overflow:hidden;text-overflow:ellipsis}
-.console-tabs{position:fixed;top:52px;left:205px;right:0;height:35px;padding:4px 17px 0;background:#fff;border-bottom:1px solid #e2eaf2;z-index:14;display:flex;align-items:stretch;gap:5px;overflow-x:auto;scrollbar-width:thin}
-.console-tab{display:flex;align-items:center;gap:2px;flex:none;max-width:210px;border:1px solid #e0e9f2;border-bottom:0;background:#f9fbfe;border-radius:4px 4px 0 0;color:#60758e;font-size:12px}
-.console-tab.active{background:#eaf2fd;color:#2466b7;border-color:#bfd6f3}
-.console-tab .tab-label{display:flex;align-items:center;gap:6px;min-width:0;padding:0 10px;height:100%;border:0;background:transparent;color:inherit;font-size:12px}
-.console-tab .tab-dot{width:6px;height:6px;border-radius:50%;background:#3889da;flex:none}
-.console-tab .tab-close{border:0;background:transparent;padding:0 9px 0 1px;color:#8295ad;font-size:16px;line-height:1}
-.console-tab .tab-close:hover{color:#ca4659}
-.console-tab-home{padding:0 12px;cursor:pointer}
 @media(max-width:760px){
  .console-breadcrumb{gap:7px;font-size:12px}
- .app-root .workspace{padding-top:100px}
- .console-tabs{left:0;padding-left:12px;padding-right:12px}
+
+
 }
 
 

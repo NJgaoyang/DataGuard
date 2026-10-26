@@ -126,8 +126,7 @@ test('mobile navigation is usable',async({page})=>{
 test('authenticated console uses a compact shared layout on every page',async({page})=>{
  await expect(page.locator('.topbar')).toBeVisible();
  const bar=await page.locator('.topbar').boundingBox();
- const tabBar=await page.locator('.console-tabs').boundingBox();
- expect(tabBar!.height).toBeLessThanOrEqual(36);
+ await expect(page.locator('.console-tabs')).toHaveCount(0);
  const heading=await page.locator('.workspace-head').boundingBox();
  const firstCard=await page.locator('.metric').first().boundingBox();
  expect(bar!.height).toBeLessThanOrEqual(54);
@@ -137,23 +136,21 @@ test('authenticated console uses a compact shared layout on every page',async({p
   await navigate(page,label);
   await expect(page.locator('.workspace-head')).toBeVisible();
   const ws=await page.locator('.workspace').evaluate(el=>parseFloat(getComputedStyle(el).paddingTop));
-  expect(ws).toBeLessThanOrEqual(105); // 52px top bar + 35px tabs + 14px content gap
+  expect(ws).toBeLessThanOrEqual(70); // 52px header + compact content gap
  }
 });
 
-test('top breadcrumb and page tabs work without redesigning the existing console',async({page})=>{
+test('single header row keeps breadcrumbs and removes secondary tabs for every page',async({page})=>{
  await expect(page.locator('.console-breadcrumb')).toContainText('工作台');
- await expect(page.locator('.console-tabs')).toBeVisible();
+ await expect(page.locator('.console-tabs')).toHaveCount(0);
  await expect(page.locator('.metric')).toHaveCount(4);
  const bg=await page.locator('.app-root').evaluate(el=>getComputedStyle(el).backgroundColor);
  expect(bg).toBe('rgb(243, 246, 250)');
- await navigate(page,'数据源');
- await expect(page.locator('.console-breadcrumb')).toContainText('数据源');
- await expect(page.locator('.console-tabs')).toContainText('数据源');
- await navigate(page,'Agent 管理');
- await expect(page.locator('.console-tabs')).toContainText('Agent 管理');
- await page.getByRole('button',{name:'关闭Agent 管理标签'}).click();
- await expect(page.locator('.workspace-head h1')).toHaveText('数据源');
- await page.locator('.console-tab-home').click();
+ for(const label of ['数据源','Agent 管理','访问规则','审批中心','访问记录','系统设置']){
+  await navigate(page,label);
+  await expect(page.locator('.console-breadcrumb')).toContainText(label);
+  await expect(page.locator('.console-tabs')).toHaveCount(0);
+ }
+ await page.locator('.breadcrumb-home').click();
  await expect(page.locator('.workspace-head h1')).toHaveText('工作台');
 });
