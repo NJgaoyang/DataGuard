@@ -165,7 +165,7 @@ test('authenticated console uses a compact shared layout on every page',async({p
 });
 
 test('single header row keeps breadcrumbs and removes secondary tabs for every page',async({page})=>{
- await expect(page.locator('.console-breadcrumb')).toContainText('工作台');
+ await expect(page.locator('.console-breadcrumb')).toHaveText('首页');
  await expect(page.locator('.console-tabs')).toHaveCount(0);
  await expect(page.locator('.metric')).toHaveCount(4);
  const bg=await page.locator('.app-root').evaluate(el=>getComputedStyle(el).backgroundColor);

@@ -1,0 +1,8 @@
+[Unit]
+Description=Generate daily DataGuard availability summary
+[Timer]
+OnCalendar=*-*-* 00:10:00 UTC
+Persistent=true
+Unit=dataguard-daily-report.service
+[Install]
+WantedBy=timers.target
