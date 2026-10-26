@@ -23,7 +23,7 @@ async function removeColumn(r:DataRow){if(!selected.value)return;try{await api('
 onMounted(()=>void refresh());defineExpose({refresh});
 </script>
 <template>
-<section class="panel"><div class="panel-head"><h2>Agent 管理</h2><a-button type="primary" @click="openCreate">＋ 新建 Agent</a-button></div>
+<section v-if="!selected" class="panel"><div class="panel-head"><h2>Agent 管理</h2><a-button type="primary" @click="openCreate">＋ 新建 Agent</a-button></div>
  <div class="toolbar"><a-input-search v-model:value="search" class="search" allow-clear placeholder="搜索 Agent 名称或所属用户"/></div>
  <a-table :data-source="filtered" :pagination="page" row-key="id" :scroll="{x:770}">
  <a-table-column title="Agent 名称"><template #default="{record}"><a-button type="link" class="name-link" @click="open(record)">♧ {{record.name}}</a-button></template></a-table-column>
@@ -32,7 +32,9 @@ onMounted(()=>void refresh());defineExpose({refresh});
  <a-table-column title="最近访问"><template #default="{record}">{{stamp(record.lastAccess)}}</template></a-table-column>
  <a-table-column title="操作"><template #default="{record}"><a-button type="link" @click="open(record)">查看</a-button></template></a-table-column>
  </a-table></section>
- <a-drawer :mask="false" :open="!!selected" width="500" :title="selected?.name" @close="selected=null">
+ <section v-else class="panel detail-page" aria-label="Agent 详情页面">
+ <div class="panel-head"><h2>Agent 详情</h2><a-button @click="selected=null">返回 Agent 列表</a-button></div>
+ <div class="detail-content">
   <template v-if="selected"><div class="drawer-heading"><strong>{{selected.name}}</strong><a-tag :color="status(selected)==='正常'?'green':'red'">{{status(selected)}}</a-tag></div>
    <a-tabs v-model:active-key="tab">
     <a-tab-pane key="info" tab="基本信息"><a-descriptions :column="1" size="small" bordered>
@@ -83,7 +85,8 @@ onMounted(()=>void refresh());defineExpose({refresh});
  </a-tab-pane>
    </a-tabs>
   </template>
- </a-drawer>
+ </div>
+</section>
  <a-modal v-model:open="createOpen" title="新建 Agent" ok-text="创建" @ok="save">
   <a-form layout="vertical"><a-form-item label="Agent 名称" required><a-input v-model:value="form.name"/></a-form-item>
    <a-form-item v-if="user.roleCode==='ADMIN'" label="所属用户"><a-select v-model:value="form.ownerId" placeholder="不选则归属本人" allow-clear :options="users.map(u=>({value:u.id,label:u.displayName}))"/></a-form-item>

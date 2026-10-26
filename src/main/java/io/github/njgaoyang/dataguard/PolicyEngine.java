@@ -241,6 +241,96 @@ class ControlApi {
    """+conditions+" ORDER BY q.created_at DESC LIMIT 300";
   return db.queryForList(sql,params.toArray());
  }
+
+ // Server-side pagination: access records are not limited to the newest 300 rows.
+ // Both the count and page query apply exactly the same authorization predicate.
+ @GetMapping("/requests/page")
+ Map<String,Object> requestPage(Authentication auth,
+   @RequestParam(defaultValue="1") int page,
+   @RequestParam(defaultValue="") String status,
+   @RequestParam(defaultValue="") String agent,
+   @RequestParam(defaultValue="") String source,
+   @RequestParam(defaultValue="") String search,
+   @RequestParam(defaultValue="") String from,
+   @RequestParam(defaultValue="") String to){
+  if(page<1||page>100000||search.length()>120||agent.length()>160||source.length()>160)
+   throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid pagination or filters");
+  if(!status.isBlank()&&!Set.of("SUCCESS","PENDING","APPROVED","DENIED","REJECTED","FAILED","EXECUTING","EXPIRED").contains(status))
+   throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid status");
+  String conditions=" WHERE 1=1";
+  List<Object> params=new ArrayList<>();
+  boolean admin=auth.getAuthorities().stream().anyMatch(a->a.getAuthority().equals("ROLE_ADMIN"));
+  if(!admin){conditions+=" AND (owner.username=? OR reviewer.username=?)";params.add(auth.getName());params.add(auth.getName());}
+  if(!status.isBlank()){conditions+=" AND q.status=?";params.add(status);}
+  if(!agent.isBlank()){conditions+=" AND a.name=?";params.add(agent);}
+  if(!source.isBlank()){conditions+=" AND s.name=?";params.add(source);}
+  if(!search.isBlank()){
+   conditions+=" AND (q.id LIKE ? OR q.table_name LIKE ? OR a.name LIKE ? OR s.name LIKE ? OR owner.display_name LIKE ?)";
+   String q="%"+search.replace("%","\\%").replace("_","\\_")+"%";
+   for(int i=0;i<5;i++)params.add(q);
+  }
+  try{
+   if(!from.isBlank()){
+    conditions+=" AND q.created_at>=?";
+    params.add(java.sql.Date.valueOf(java.time.LocalDate.parse(from)));
+   }
+   if(!to.isBlank()){
+    conditions+=" AND q.created_at<DATE_ADD(?,INTERVAL 1 DAY)";
+    params.add(java.sql.Date.valueOf(java.time.LocalDate.parse(to)));
+   }
+  }catch(java.time.format.DateTimeParseException ex){
+   throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid date range");
+  }
+  String joins="""
+   FROM dg_requests q JOIN dg_agents a ON a.id=q.agent_id
+   JOIN dg_sources s ON s.id=q.source_id JOIN dg_users owner ON owner.id=q.owner_id
+   LEFT JOIN dg_users reviewer ON reviewer.id=q.approver_id
+   """;
+  long total=db.queryForObject("SELECT COUNT(*) "+joins+conditions,Long.class,params.toArray());
+  String projection="""
+   SELECT q.id,q.created_at AS createdAt,q.expires_at AS expiresAt,
+    q.finished_at AS finishedAt,q.table_name AS tableName,q.columns_csv AS columnsRequested,
+    q.requested_rows AS requestedRows,q.returned_rows AS returnedRows,q.duration_ms AS durationMs,
+    q.status,q.action,q.reason,q.rule_id AS ruleId,q.source_id AS sourceId,s.name AS sourceName,
+    a.name AS agentName,owner.username AS ownerUsername,owner.display_name AS requesterName,
+    reviewer.display_name AS approverName,reviewer.username AS approverUsername,access_rule.name AS ruleName
+    FROM dg_requests q JOIN dg_agents a ON a.id=q.agent_id
+    JOIN dg_sources s ON s.id=q.source_id JOIN dg_users owner ON owner.id=q.owner_id
+    LEFT JOIN dg_users reviewer ON reviewer.id=q.approver_id
+    LEFT JOIN dg_rules access_rule ON access_rule.id=q.rule_id
+   
+   """;
+  List<Object> pageParams=new ArrayList<>(params);
+  pageParams.add(10);
+  pageParams.add((page-1)*10);
+  List<Map<String,Object>> items=db.queryForList(projection+conditions+
+   " ORDER BY q.created_at DESC,q.id DESC LIMIT ? OFFSET ?",pageParams.toArray());
+  return Map.of("items",items,"total",total,"page",page,"pageSize",10);
+ }
+
+ // Resolve a single request by UUID. Never return another user's request.
+ @GetMapping("/requests/{id}")
+ Map<String,Object> requestDetail(Authentication auth,@PathVariable String id){
+  String safe=Guard.id(id);
+  boolean admin=auth.getAuthorities().stream().anyMatch(a->a.getAuthority().equals("ROLE_ADMIN"));
+  String condition=admin?" WHERE q.id=?":" WHERE q.id=? AND (owner.username=? OR reviewer.username=?)";
+  Object[] args=admin?new Object[]{safe}:new Object[]{safe,auth.getName(),auth.getName()};
+  List<Map<String,Object>> rows=db.queryForList("""
+   SELECT q.id,q.created_at AS createdAt,q.expires_at AS expiresAt,
+    q.finished_at AS finishedAt,q.table_name AS tableName,q.columns_csv AS columnsRequested,
+    q.requested_rows AS requestedRows,q.returned_rows AS returnedRows,q.duration_ms AS durationMs,
+    q.status,q.action,q.reason,q.rule_id AS ruleId,q.source_id AS sourceId,s.name AS sourceName,
+    a.name AS agentName,owner.username AS ownerUsername,owner.display_name AS requesterName,
+    reviewer.display_name AS approverName,reviewer.username AS approverUsername,access_rule.name AS ruleName
+    FROM dg_requests q JOIN dg_agents a ON a.id=q.agent_id
+    JOIN dg_sources s ON s.id=q.source_id JOIN dg_users owner ON owner.id=q.owner_id
+    LEFT JOIN dg_users reviewer ON reviewer.id=q.approver_id
+    LEFT JOIN dg_rules access_rule ON access_rule.id=q.rule_id
+   
+   """+condition,args);
+  if(rows.isEmpty())throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+  return rows.get(0);
+ }
  @PostMapping("/requests/{id}/{action}")
  @Transactional
  public Map<String,Object> decide(Authentication auth,@PathVariable String id,@PathVariable String action,@RequestBody Decision in){

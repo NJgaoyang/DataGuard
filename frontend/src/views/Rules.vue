@@ -29,7 +29,7 @@ const condition=(row:DataRow)=>'读取 '+row.minRows+'～'+row.maxRows+' 行'+(r
 onMounted(()=>void refresh());defineExpose({refresh});
 </script>
 <template>
- <section class="panel"><div class="panel-head"><h2>访问规则</h2><a-button type="primary" @click="openCreate">＋ 新建规则</a-button></div>
+ <section v-if="!selected" class="panel"><div class="panel-head"><h2>访问规则</h2><a-button type="primary" @click="openCreate">＋ 新建规则</a-button></div>
  <div class="toolbar"><a-input-search v-model:value="search" allow-clear class="search" placeholder="搜索规则名称或适用范围"/></div>
  <a-table :data-source="filtered" row-key="id" :pagination="page" :scroll="{x:850}">
  <a-table-column title="规则名称"><template #default="{record}"><a-button type="link" class="name-link" @click="selected=record">{{record.name}}</a-button></template></a-table-column>
@@ -40,7 +40,9 @@ onMounted(()=>void refresh());defineExpose({refresh});
  <a-table-column title="优先级" data-index="priority"/>
  <a-table-column title="操作"><template #default="{record}"><a-button type="link" @click="selected=record">查看</a-button></template></a-table-column>
  </a-table></section>
- <a-drawer :mask="false" :open="!!selected" width="430" :title="selected?.name" @close="selected=null">
+ <section v-else class="panel detail-page" aria-label="规则详情页面">
+ <div class="panel-head"><h2>规则详情</h2><a-button @click="selected=null">返回规则列表</a-button></div>
+ <div class="detail-content">
  <a-descriptions v-if="selected" :column="1" size="small" bordered>
  <a-descriptions-item label="规则名称">{{selected.name}}</a-descriptions-item>
  <a-descriptions-item label="优先级">{{selected.priority}}</a-descriptions-item>
@@ -50,7 +52,8 @@ onMounted(()=>void refresh());defineExpose({refresh});
  <a-descriptions-item label="动作">{{labels[selected.action]}}</a-descriptions-item>
  <a-descriptions-item v-if="selected.action==='APPROVAL'" label="审批人">{{selected.approverName}}</a-descriptions-item>
  </a-descriptions>
- <div class="drawer-actions"><a-button type="primary" @click="selected&&edit(selected)">编辑规则</a-button><a-button :danger="selected?.enabled" @click="selected&&confirm('确认变更规则状态？',toggleSelected)">{{selected?.enabled?'停用规则':'启用规则'}}</a-button></div></a-drawer>
+ <div class="drawer-actions"><a-button type="primary" @click="selected&&edit(selected)">编辑规则</a-button><a-button :danger="selected?.enabled" @click="selected&&confirm('确认变更规则状态？',toggleSelected)">{{selected?.enabled?'停用规则':'启用规则'}}</a-button></div></div>
+</section>
  <a-modal v-model:open="createOpen" :title="editId?'编辑访问规则':'新建访问规则'" :ok-text="editId?'保存修改':'创建规则'" :confirm-loading="busy" :width="610" @ok="save">
  <a-form layout="vertical"><a-form-item label="规则名称" required><a-input v-model:value="form.name"/></a-form-item>
  <div class="form-grid">

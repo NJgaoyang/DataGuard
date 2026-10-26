@@ -295,3 +295,21 @@
  .auth-login-card{padding:30px 22px}
  .auth-form .auth-field-control input{font-size:14px}
 }
+
+/* All read-only and permission details are now full-width main-content pages. */
+.app-root .detail-page{min-height:230px}
+.app-root .detail-page .panel-head{background:#f9fbfe}
+.app-root .detail-content{padding:18px 20px 24px;max-width:1180px}
+.app-root .detail-content .ant-descriptions{max-width:1100px}
+.app-root .detail-content .ant-descriptions-item-label{width:166px;color:#657b94}
+.app-root .detail-page .drawer-heading{margin-bottom:15px}
+.app-root .detail-page .grant-row{max-width:1050px}
+.app-root .detail-page .inline-entry{max-width:720px}
+.app-root .detail-page .grant-editor{max-width:720px}
+.app-root .detail-page .approval-buttons{display:flex;gap:10px}
+.app-root .record-filters .ant-picker{min-width:260px}
+@media(max-width:760px){
+ .app-root .detail-content{padding:12px}
+ .app-root .detail-content .ant-descriptions-item-label{width:105px}
+ .app-root .record-filters .ant-picker{width:100%;min-width:0}
+}

@@ -56,6 +56,17 @@ test.beforeEach(async ({page})=>{
   else if(path==='/api/rules')data=rules;
   else if(path==='/api/approvers')data=[{id:'uadmin',displayName:'管理员',username:'admin'}];
   else if(path==='/api/users')data=[{id:'uadmin',username:'admin',displayName:'管理员',roleCode:'ADMIN',enabled:true}];
+  else if(path==='/api/requests/page'){
+    const all=[...requests,...Array.from({length:21},(_,i)=>({
+      ...requests[1],id:'history-'+String(i+1),createdAt:'2026-10-25T08:00:00'
+    }))];
+    const p=Math.max(1,Number(url.searchParams.get('page')||1));
+    data={page:p,pageSize:10,total:all.length,items:all.slice((p-1)*10,p*10)};
+  }
+  else if(path.startsWith('/api/requests/')&&route.request().method()==='GET'){
+    const id=path.split('/').pop();
+    data=requests.find(x=>x.id===id)||requests[1];
+  }
   else if(path==='/api/requests'){
     const scope=url.searchParams.get('scope');
     data=scope==='pending'?requests.filter(r=>r.status==='PENDING'):scope==='handled'?requests.filter(r=>r.status!=='PENDING'):requests;
@@ -71,7 +82,7 @@ const navigate=async(page:import('@playwright/test').Page,text:string)=>{
  await page.locator('nav[aria-label="主导航"] .nav-item').filter({hasText:text}).click();
  await expect(page.locator('.workspace-head h1')).toHaveText(text);
 };
-test('six actual menu pages retain screenshot layout and detail drawers',async ({page})=>{
+test('all menu pages retain compact layout and open full-page details',async ({page})=>{
  await expect(page.locator('nav[aria-label="主导航"] .nav-item')).toHaveText([
   '工作台','数据源','Agent 管理','访问规则','审批中心','访问记录','系统设置'
  ]);
@@ -81,36 +92,36 @@ test('six actual menu pages retain screenshot layout and detail drawers',async (
  await navigate(page,'数据源');
  await expect(page.getByRole('button',{name:'订单数据库'})).toBeVisible();
  await page.getByRole('button',{name:'订单数据库'}).click();
- await page.locator('.ant-drawer .grant-row').filter({hasText:'orders'}).getByRole('button',{name:'字段权限'}).click();
- await expect(page.locator('.ant-drawer')).toContainText('bigint');
- await expect(page.locator('.ant-drawer')).toContainText('脱敏');
- await page.screenshot({animations:'disabled',path:test.info().outputPath('02-sources-drawer.png'),fullPage:true});
- await page.locator('.ant-drawer .ant-drawer-close').click();
+ await page.locator('.detail-page .grant-row').filter({hasText:'orders'}).getByRole('button',{name:'字段权限'}).click();
+ await expect(page.locator('.detail-page')).toContainText('bigint');
+ await expect(page.locator('.detail-page')).toContainText('脱敏');
+ await page.screenshot({animations:'disabled',path:test.info().outputPath('02-sources-detail.png'),fullPage:true});
+ await page.getByRole('button',{name:'返回数据源列表'}).click();
 
  await navigate(page,'Agent 管理');
  await page.getByRole('button',{name:/数据分析 Agent/}).click();
- await expect(page.locator('.ant-drawer')).toContainText('orders');
- await page.screenshot({animations:'disabled',path:test.info().outputPath('03-agent-drawer.png'),fullPage:true});
- await page.locator('.ant-drawer .ant-drawer-close').click();
+ await expect(page.locator('.detail-page')).toContainText('orders');
+ await page.screenshot({animations:'disabled',path:test.info().outputPath('03-agent-detail.png'),fullPage:true});
+ await page.getByRole('button',{name:'返回 Agent 列表'}).click();
 
  await navigate(page,'访问规则');
  await page.getByRole('button',{name:'订单表批量读取'}).click();
- await expect(page.locator('.ant-drawer')).toContainText('需要审批');
- await page.screenshot({animations:'disabled',path:test.info().outputPath('04-rules-drawer.png'),fullPage:true});
- await page.locator('.ant-drawer .ant-drawer-close').click();
+ await expect(page.locator('.detail-page')).toContainText('需要审批');
+ await page.screenshot({animations:'disabled',path:test.info().outputPath('04-rules-detail.png'),fullPage:true});
+ await page.getByRole('button',{name:'返回规则列表'}).click();
 
  await navigate(page,'审批中心');
  await expect(page.locator('.ant-table-tbody')).toContainText('客服 Agent');
  await page.locator('.ant-table-tbody').getByRole('button',{name:'审批'}).first().click();
- await expect(page.locator('.ant-drawer')).toContainText('读取字段');
- await page.screenshot({animations:'disabled',path:test.info().outputPath('05-approvals-drawer.png'),fullPage:true});
- await page.locator('.ant-drawer .ant-drawer-close').click();
+ await expect(page.locator('.detail-page')).toContainText('读取字段');
+ await page.screenshot({animations:'disabled',path:test.info().outputPath('05-approvals-detail.png'),fullPage:true});
+ await page.getByRole('button',{name:'返回审批列表'}).click();
 
  await navigate(page,'访问记录');
  await page.locator('.ant-table-tbody').getByRole('button',{name:'查看'}).first().click();
- await expect(page.locator('.ant-drawer')).toContainText('返回行数');
- await page.screenshot({animations:'disabled',path:test.info().outputPath('06-records-drawer.png'),fullPage:true});
- await page.locator('.ant-drawer .ant-drawer-close').click();
+ await expect(page.locator('.detail-page')).toContainText('返回行数');
+ await page.screenshot({animations:'disabled',path:test.info().outputPath('06-records-detail.png'),fullPage:true});
+ await page.getByRole('button',{name:'返回访问记录'}).click();
 
  await navigate(page,'系统设置');
  await expect(page.getByRole('tab',{name:'账户信息'})).toBeVisible();
@@ -153,4 +164,28 @@ test('single header row keeps breadcrumbs and removes secondary tabs for every p
  }
  await page.locator('.breadcrumb-home').click();
  await expect(page.locator('.workspace-head h1')).toHaveText('工作台');
+});
+
+test('access records use Chinese calendar, date-time and fixed ten-row server pagination',async({page})=>{
+ await navigate(page,'访问记录');
+ await expect(page.locator('.ant-table-tbody tr.ant-table-row')).toHaveCount(10);
+ await expect(page.locator('.ant-table-thead')).toContainText('序号');
+ await expect(page.locator('.ant-table-tbody tr.ant-table-row').first()).toContainText('2026-10-25 10:31:08');
+ await expect(page.locator('.ant-pagination')).toContainText('共 24 条');
+ await page.locator('.ant-pagination-item-2').click();
+ await expect(page.locator('.ant-table-tbody tr.ant-table-row')).toHaveCount(10);
+ await expect(page.locator('.ant-table-tbody tr.ant-table-row').first()).toContainText('11');
+ await page.locator('.ant-picker').click();
+ await expect(page.locator('.ant-picker-dropdown:visible')).toContainText('月');
+ await expect(page.locator('.ant-picker-dropdown:visible')).not.toContainText('Oct');
+});
+test('dashboard 查看 opens the exact record page and back restores list',async({page})=>{
+ await page.locator('.ant-table-tbody').getByRole('button',{name:'查看'}).first().click();
+ await expect(page.locator('.workspace-head h1')).toHaveText('访问详情');
+ await expect(page.locator('.detail-page')).toContainText('q1');
+ await expect(page.locator('.detail-page')).toContainText('客服 Agent');
+ await expect(page.locator('.ant-drawer')).toHaveCount(0);
+ await page.getByRole('button',{name:'返回访问记录'}).click();
+ await expect(page.locator('.workspace-head h1')).toHaveText('访问记录');
+ await expect(page.locator('.detail-page')).toHaveCount(0);
 });

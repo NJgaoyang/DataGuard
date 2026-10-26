@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {computed,onMounted,ref} from 'vue';
 import {api,stamp,stateName,stateColor,type DataRow} from '../api';
-const emit=defineEmits<{navigate:[page:string];openRecord:[row:DataRow]}>();
+const emit=defineEmits<{navigate:[page:string];openRecord:[id:string]}>();
 const data=ref<DataRow>({stats:{},recent:[]}),loading=ref(false);
 const cards=computed(()=>{const s=data.value.stats||{},requests=Number(s.requests||0),success=Number(s.success||0);
  return [
@@ -21,6 +21,6 @@ onMounted(()=>void refresh());defineExpose({refresh});
   <a-table-column title="访问对象" data-index="tableName"/>
   <a-table-column title="请求行数" data-index="requestedRows"/>
   <a-table-column title="状态"><template #default="{record}"><a-tag :color="stateColor(record.status)">{{stateName[record.status]||record.status}}</a-tag></template></a-table-column>
-  <a-table-column title="操作"><template #default="{record}"><a-button type="link" @click="emit('navigate','records')">查看</a-button></template></a-table-column>
+  <a-table-column title="操作"><template #default="{record}"><a-button type="link" @click="emit('openRecord',record.id)">查看</a-button></template></a-table-column>
  </a-table></section></a-spin>
 </template>

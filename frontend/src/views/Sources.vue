@@ -38,7 +38,7 @@ async function removeColumn(column:string){if(!selected.value)return;try{await a
 onMounted(()=>void refresh());defineExpose({refresh});
 </script>
 <template>
-<section class="panel">
+<section v-if="!selected" class="panel">
  <div class="panel-head"><h2>数据源</h2><a-button type="primary" @click="create">＋ 新增数据源</a-button></div>
  <div class="toolbar"><a-input-search class="search" v-model:value="search" allow-clear placeholder="搜索数据库名称、类型或主机"/></div>
  <a-table :data-source="filtered" row-key="id" :pagination="page" :scroll="{x:740}">
@@ -50,7 +50,9 @@ onMounted(()=>void refresh());defineExpose({refresh});
   <a-table-column title="操作"><template #default="{record}"><a-button type="link" @click="open(record)">查看</a-button></template></a-table-column>
  </a-table>
 </section>
-<a-drawer :mask="false" :open="!!selected" title="数据源详情" width="495" @close="selected=null">
+<section v-else class="panel detail-page" aria-label="数据源详情页面">
+ <div class="panel-head"><h2>数据源详情</h2><a-button @click="selected=null">返回数据源列表</a-button></div>
+ <div class="detail-content">
  <template v-if="selected">
   <div class="drawer-heading"><strong>{{selected.name}}</strong><a-tag :color="selected.enabled?'green':'red'">{{selected.enabled?'已开放':'已停用'}}</a-tag></div>
   <p class="subtle">{{selected.name}} · {{selected.type}} · {{selected.databaseName}}</p>
@@ -89,7 +91,8 @@ onMounted(()=>void refresh());defineExpose({refresh});
    </a-descriptions></a-tab-pane>
   </a-tabs>
  </template>
-</a-drawer>
+</div>
+</section>
 <a-modal v-model:open="sourceOpen" title="新增数据源" :confirm-loading="busy" ok-text="保存" :width="610" @ok="save">
  <a-form layout="vertical"><div class="form-grid">
  <a-form-item label="名称" required><a-input v-model:value="form.name"/></a-form-item>

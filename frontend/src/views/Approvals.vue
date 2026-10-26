@@ -14,7 +14,7 @@ async function decide(action:'approve'|'reject'){if(!detail.value)return;try{if(
 onMounted(()=>void refresh());defineExpose({refresh});
 </script>
 <template>
-<section class="panel">
+<section v-if="!detail" class="panel">
  <div class="panel-head"><h2>审批中心</h2></div>
  <div class="toolbar stack">
  <a-radio-group :value="tab" button-style="solid" @change="selectTab($event.target.value)">
@@ -34,7 +34,9 @@ onMounted(()=>void refresh());defineExpose({refresh});
   <a-table-column title="操作"><template #default="{record}"><a-button type="link" @click="detail=record;reason=''">{{record.approverUsername===user.username&&record.status==='PENDING'?'审批':'查看'}}</a-button></template></a-table-column>
  </a-table>
 </section>
-<a-drawer :mask="false" :open="!!detail" title="数据读取申请" width="465" @close="detail=null">
+<section v-else class="panel detail-page" aria-label="审批详情页面">
+ <div class="panel-head"><h2>审批详情</h2><a-button @click="detail=null">返回审批列表</a-button></div>
+ <div class="detail-content">
  <template v-if="detail">
   <div class="drawer-heading"><strong>{{detail.tableName}} 数据读取申请</strong><a-tag :color="stateColor(detail.status)">{{stateName[detail.status]||detail.status}}</a-tag></div>
   <a-descriptions :column="1" size="small" bordered>
@@ -57,5 +59,6 @@ onMounted(()=>void refresh());defineExpose({refresh});
   </template>
   <a-alert v-else-if="detail.status==='APPROVED'" style="margin-top:20px" type="info" message="审批已通过，Agent 可重试完全相同的请求一次。"/>
  </template>
-</a-drawer>
+</div>
+</section>
 </template>

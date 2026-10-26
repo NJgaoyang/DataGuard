@@ -6,6 +6,7 @@ import {
  BellOutlined,LogoutOutlined,DownOutlined,LockOutlined,UserOutlined,EyeOutlined,EyeInvisibleOutlined,SecurityScanOutlined
 } from '@ant-design/icons-vue';
 import {api,fail,initCsrf,login,logout,type User} from './api';
+import zhCN from 'ant-design-vue/es/locale/zh_CN';
 import Dashboard from './views/Dashboard.vue';
 import Sources from './views/Sources.vue';
 import Agents from './views/Agents.vue';
@@ -23,6 +24,7 @@ const user=ref<User|null>(null),ready=ref(false),page=ref('dashboard'),
   loading=ref(false),error=ref(''),
   currentPassword=ref(''),nextPassword=ref(''),changeOpen=ref(false),passwordBusy=ref(false),
   menuOpen=ref(false),reloadKey=ref(0);
+const recordId=ref<string|null>(null);
 const loginModel=reactive({username:'',password:''});
 const passwordVisible=ref(false);
 const items=[
@@ -34,7 +36,7 @@ const items=[
  {id:'records',label:'访问记录',icon:FileSearchOutlined},
  {id:'settings',label:'系统设置',icon:SettingOutlined}
 ];
-const title=computed(()=>items.find(i=>i.id===page.value)?.label||'工作台');
+const title=computed(()=>page.value==='records'&&recordId.value?'访问详情':items.find(i=>i.id===page.value)?.label||'工作台');
 const admin=computed(()=>user.value?.roleCode==='ADMIN');
 const visibleItems=computed(()=>items.filter(i=>admin.value||!['sources','rules'].includes(i.id)));
 async function start(){
@@ -51,12 +53,13 @@ async function changePassword(){
   if(result.reauthenticate){user.value=null;changeOpen.value=false;currentPassword.value='';nextPassword.value='';await initCsrf();}
  }catch(e){fail(e)}finally{passwordBusy.value=false}
 }
-function navigate(name:string){page.value=name;menuOpen.value=false}
+function navigate(name:string){recordId.value=null;page.value=name;menuOpen.value=false}
+function openRecord(id:string){recordId.value=id;page.value='records';menuOpen.value=false}
 function refresh(){reloadKey.value++}
 onMounted(()=>void start());
 </script>
 <template>
-<a-config-provider :theme="theme">
+<a-config-provider :theme="theme" :locale="zhCN">
  <div v-if="!ready" class="app-loading"><a-spin size="large"/></div>
  <main v-else-if="!user" class="auth-layout">
   <section class="auth-brand-panel" aria-label="DataGuard 产品介绍">
@@ -125,12 +128,12 @@ onMounted(()=>void start());
   </header>
   <main class="workspace">
    <div class="workspace-head"><h1>{{title}}</h1><a-button @click="refresh"><ReloadOutlined/> 刷新</a-button></div>
-   <Dashboard v-if="page==='dashboard'" :key="'dashboard'+reloadKey" @navigate="navigate"/>
+   <Dashboard v-if="page==='dashboard'" :key="'dashboard'+reloadKey" @navigate="navigate" @open-record="openRecord"/>
    <Sources v-else-if="page==='sources'&&admin" :key="'sources'+reloadKey"/>
    <Agents v-else-if="page==='agents'" :key="'agents'+reloadKey" :user="user"/>
    <Rules v-else-if="page==='rules'&&admin" :key="'rules'+reloadKey"/>
    <Approvals v-else-if="page==='approvals'" :key="'approvals'+reloadKey" :user="user"/>
-   <Records v-else-if="page==='records'" :key="'records'+reloadKey"/>
+   <Records v-else-if="page==='records'" :key="'records'+reloadKey" :initial-record-id="recordId" @close-detail="recordId=null"/>
    <Settings v-else-if="page==='settings'" :key="'settings'+reloadKey" :user="user" @change-password="changeOpen=true"/>
   </main>
  </div>
