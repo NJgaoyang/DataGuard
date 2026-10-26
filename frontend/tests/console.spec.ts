@@ -123,3 +123,18 @@ test('mobile navigation is usable',async({page})=>{
  await expect(page.locator('.workspace-head h1')).toHaveText('审批中心');
  await page.screenshot({animations:'disabled',path:test.info().outputPath('07-mobile-approvals.png'),fullPage:true});
 });
+test('authenticated console uses a compact shared layout on every page',async({page})=>{
+ await expect(page.locator('.topbar')).toBeVisible();
+ const bar=await page.locator('.topbar').boundingBox();
+ const heading=await page.locator('.workspace-head').boundingBox();
+ const firstCard=await page.locator('.metric').first().boundingBox();
+ expect(bar!.height).toBeLessThanOrEqual(54);
+ expect(heading!.height).toBeLessThanOrEqual(34);
+ expect(firstCard!.height).toBeLessThanOrEqual(88);
+ for(const label of ['数据源','Agent 管理','访问规则','审批中心','访问记录','系统设置']){
+  await navigate(page,label);
+  await expect(page.locator('.workspace-head')).toBeVisible();
+  const ws=await page.locator('.workspace').evaluate(el=>parseFloat(getComputedStyle(el).paddingTop));
+  expect(ws).toBeLessThanOrEqual(70);
+ }
+});

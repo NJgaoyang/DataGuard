@@ -14,7 +14,7 @@ onMounted(()=>void refresh());defineExpose({refresh});
 <template>
  <a-tabs v-model:active-key="active" class="settings-tabs">
   <a-tab-pane key="profile" tab="账户信息"><section class="panel"><div class="panel-head"><h2>当前账户</h2><a-button type="primary" @click="emit('changePassword')">修改密码</a-button></div>
-   <a-descriptions :column="1" size="small" style="padding:24px"><a-descriptions-item label="姓名">{{user.displayName}}</a-descriptions-item><a-descriptions-item label="用户名">{{user.username}}</a-descriptions-item><a-descriptions-item label="角色">{{user.roleCode==='ADMIN'?'管理员':user.roleCode==='APPROVER'?'审批人':'普通用户'}}</a-descriptions-item></a-descriptions>
+   <a-descriptions :column="1" size="small" style="padding:14px"><a-descriptions-item label="姓名">{{user.displayName}}</a-descriptions-item><a-descriptions-item label="用户名">{{user.username}}</a-descriptions-item><a-descriptions-item label="角色">{{user.roleCode==='ADMIN'?'管理员':user.roleCode==='APPROVER'?'审批人':'普通用户'}}</a-descriptions-item></a-descriptions>
   </section></a-tab-pane>
   <a-tab-pane v-if="user.roleCode==='ADMIN'" key="users" tab="用户管理"><section class="panel">
    <div class="panel-head"><h2>系统用户</h2><a-button type="primary" @click="form={username:'',displayName:'',roleCode:'READER',password:''};createOpen=true">＋ 新增用户</a-button></div>
@@ -27,7 +27,7 @@ onMounted(()=>void refresh());defineExpose({refresh});
    </a-table></section></a-tab-pane>
   <a-tab-pane v-if="user.roleCode==='ADMIN'" key="security" tab="安全参数">
    <section class="panel"><div class="panel-head"><h2>安全参数</h2></div>
-    <a-descriptions :column="1" bordered style="padding:22px">
+    <a-descriptions :column="1" bordered style="padding:14px">
      <a-descriptions-item label="数据库访问">仅 MySQL / StarRocks 只读账号</a-descriptions-item>
      <a-descriptions-item label="授权方式">平台表字段白名单 ∩ Agent 授权</a-descriptions-item>
      <a-descriptions-item label="单次安全上限">200 行</a-descriptions-item>

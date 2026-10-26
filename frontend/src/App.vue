@@ -17,7 +17,7 @@ import Settings from './views/Settings.vue';
 const theme={token:{colorPrimary:'#1766e8',colorSuccess:'#18a76e',colorError:'#e04757',
   colorWarning:'#d59529',colorText:'#203147',colorTextSecondary:'#75839a',
   colorBorder:'#e5eaf1',colorBgLayout:'#f7f9fc',borderRadius:6,fontSize:13,motion:false},
-  components:{Table:{headerBg:'#f9fbfd',headerColor:'#728097',cellPaddingBlock:12,cellPaddingInline:14},
+  components:{Table:{headerBg:'#f9fbfd',headerColor:'#728097',cellPaddingBlock:9,cellPaddingInline:12},
    Button:{borderRadius:5},Menu:{itemSelectedBg:'#eaf2ff'}}};
 const user=ref<User|null>(null),ready=ref(false),page=ref('dashboard'),
   loading=ref(false),error=ref(''),

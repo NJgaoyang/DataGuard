@@ -69,3 +69,70 @@
 .brand-mark{background:transparent;width:28px;height:32px}
 .sidebar-brand-mark{display:block;width:28px;height:31px;object-fit:contain}
 .auth-submit:disabled{opacity:.7;cursor:wait}
+
+
+/* Console density: shared across all seven authenticated pages.
+   Keep the archived split-screen login unmodified. */
+.app-root .sidebar{padding-inline:8px}
+.app-root .brand{height:52px;padding-inline:9px;font-size:14px;gap:8px}
+.app-root .brand-mark{width:27px;height:29px}
+.app-root .sidebar-brand-mark{width:27px;height:29px}
+.app-root .sidebar nav{padding-top:5px;gap:2px}
+.app-root .nav-item{height:36px;padding-inline:12px;gap:11px;font-size:13px}
+.app-root .nav-item .anticon{font-size:15px}
+.app-root .nav-divider{margin:9px 5px 6px}
+.app-root .topbar{height:52px;padding-inline:21px}
+.app-root .topbar-actions{gap:13px}
+.app-root .workspace{padding:68px 17px 22px}
+.app-root .workspace-head{height:32px;margin-bottom:12px}
+.app-root .workspace-head h1{font-size:19px}
+.app-root .workspace-head .ant-btn{height:30px;padding-inline:12px}
+.app-root .panel+.panel{margin-top:12px}
+.app-root .panel-head{min-height:47px;padding:9px 15px}
+.app-root .panel-head h2{font-size:14px}
+.app-root .panel-head .ant-btn{height:29px;padding-inline:10px}
+.app-root .toolbar{padding:9px 14px;gap:8px}
+.app-root .toolbar .ant-input-affix-wrapper,
+.app-root .toolbar .ant-select-selector,
+.app-root .toolbar .ant-picker{min-height:30px}
+.app-root .search{width:240px}
+.app-root .ant-table-wrapper .ant-table-thead>tr>th{padding:9px 12px!important}
+.app-root .ant-table-wrapper .ant-table-tbody>tr>td{padding:9px 12px!important}
+.app-root .ant-table-wrapper .ant-pagination{margin:11px 15px!important}
+.app-root .ant-table-wrapper .ant-table-placeholder .ant-table-cell{padding:18px 12px!important}
+.app-root .ant-empty-normal{margin:9px 0!important}
+.app-root .ant-empty-normal .ant-empty-image{height:42px!important;margin-bottom:6px!important}
+.app-root .metric-grid{gap:10px;margin-bottom:12px}
+.app-root .metric{height:86px;padding:13px 15px}
+.app-root .metric strong{font-size:24px;margin-top:6px;line-height:1.25}
+.app-root .metric-decoration{width:26px;height:26px;right:15px;top:14px;border-radius:7px}
+.app-root .settings-tabs>.ant-tabs-nav{margin-bottom:12px}
+.app-root .settings-tabs .ant-tabs-tab{padding:8px 0}
+.app-root .ant-descriptions .ant-descriptions-row>td,
+.app-root .ant-descriptions .ant-descriptions-row>th{padding:9px 12px!important}
+.app-root .ant-card-body{padding:14px}
+.app-root .ant-form-item{margin-bottom:14px}
+.app-root .grant-row{min-height:41px;padding:6px 0}
+.app-root .grant-limit{padding:12px 0 8px}
+.app-root .inline-entry{margin:10px 0}
+.app-root .drawer-actions{margin-top:15px}
+.app-root .approval-buttons{margin-top:12px}
+.app-root .subtle{line-height:1.5}
+.ant-drawer .ant-drawer-header{padding:12px 17px}
+.ant-drawer .ant-drawer-body{padding:16px 17px}
+@media(max-width:1100px){
+ .app-root .metric-grid{gap:9px}
+ .app-root .search{width:200px}
+}
+@media(max-width:760px){
+ .app-root .sidebar{width:230px}
+ .app-root .topbar{left:0;height:52px;padding-inline:14px}
+ .app-root .workspace{margin-left:0;padding:66px 12px 18px}
+ .app-root .workspace-head{height:32px;margin-bottom:11px}
+ .app-root .metric{height:82px;padding:12px}
+ .app-root .metric strong{font-size:22px}
+ .app-root .metric-decoration{right:11px;top:11px}
+ .app-root .toolbar{padding:9px 11px}
+ .app-root .toolbar .search{width:100%}
+ .app-root .panel-head{padding:9px 12px}
+}
