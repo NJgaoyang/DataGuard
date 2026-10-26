@@ -71,7 +71,7 @@ onMounted(()=>void start());
  <div v-if="!ready" class="app-loading"><a-spin size="large"/></div>
  <main v-else-if="!user" class="auth-layout">
   <section class="auth-brand-panel" aria-label="DataGuard 产品介绍">
-   <img class="auth-scene" src="/assets/dataguard-login-illustration.svg" alt="" aria-hidden="true"/>
+   <img class="auth-scene" src="/assets/dataguard-login-illustration.svg?v=2" alt="" aria-hidden="true"/>
    <div class="auth-brand-top">
     <img class="auth-brand-mark" src="/assets/dataguard-mark.svg" alt="DataGuard" width="54" height="59"/>
     <span class="auth-brand-copy"><strong class="brand-wordmark">Data<span>Guard</span></strong><small>数据守卫</small></span>

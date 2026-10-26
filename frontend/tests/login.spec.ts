@@ -24,6 +24,13 @@ test('login form actually submits, reports invalid credentials, and opens the wo
  await expect(page.locator('.auth-brand-panel')).toHaveCSS('background-color','rgb(242, 247, 255)');
  await expect(page.locator('.auth-brand-mark')).toHaveJSProperty('naturalWidth',150);
  await expect(page.locator('.auth-scene')).toHaveJSProperty('naturalWidth',465);
+ const illustration=await page.request.get('/assets/dataguard-login-illustration.svg?v=2');
+ expect(illustration.ok()).toBe(true);
+ const svg=await illustration.text();
+ expect(svg).toContain('viewBox="0 0 465 430"');
+ expect(svg).not.toContain('<image');
+ expect(svg).not.toContain('<rect');
+ expect(svg).not.toContain('data:image/');
  await expect(page.locator('.auth-login-card')).toHaveCSS('background-color','rgb(255, 255, 255)');
  await expect(page.locator('.auth-password-toggle')).toHaveAttribute('aria-label','显示密码');
  await page.locator('input[autocomplete="current-password"]').fill('temp-password');
