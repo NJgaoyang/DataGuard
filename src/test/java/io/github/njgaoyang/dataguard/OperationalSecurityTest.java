@@ -23,17 +23,25 @@ class OperationalSecurityTest {
   controls.successfulLogin(username);
   assertFalse(controls.locked(username));
  }
- @Test @Transactional
+ @Test
  void agentQuotaIsDurableAndEnforcedAtSixtyRequests(){
+  // Do not wrap this method in @Transactional: each HTTP MCP call has its own
+  // service transaction. A shared test transaction would hide the 61st-call
+  // rollback until the end of the test.
   String userId=UUID.randomUUID().toString(),agent=UUID.randomUUID().toString();
   db.update("INSERT INTO dg_users(id,username,display_name,password_hash,role_code,enabled,must_change_password) VALUES(?,?,?,?, 'READER',1,0)",
     userId,"quota_"+userId.substring(0,14),"Quota fixture","test");
-  db.update("INSERT INTO dg_agents(id,owner_user_id,name,token_hash,expires_at) VALUES(?,?,?,?,DATE_ADD(NOW(3),INTERVAL 10 DAY))",
-    agent,userId,"Test agent",UUID.randomUUID().toString().replace("-","")+UUID.randomUUID().toString().replace("-",""));
-  for(int i=0;i<60;i++)controls.chargeAgent(agent,1);
-  ResponseStatusException rejection=assertThrows(ResponseStatusException.class,()->controls.chargeAgent(agent,1));
-  assertEquals(HttpStatus.TOO_MANY_REQUESTS,rejection.getStatusCode());
-  Integer used=db.queryForObject("SELECT SUM(calls) FROM dg_agent_minute_usage WHERE agent_id=?",Integer.class,agent);
-  assertEquals(60,used);
+  try {
+   db.update("INSERT INTO dg_agents(id,owner_user_id,name,token_hash,expires_at) VALUES(?,?,?,?,DATE_ADD(NOW(3),INTERVAL 10 DAY))",
+     agent,userId,"Test agent",UUID.randomUUID().toString().replace("-","")+UUID.randomUUID().toString().replace("-",""));
+   for(int i=0;i<60;i++)controls.chargeAgent(agent,1);
+   ResponseStatusException rejection=assertThrows(ResponseStatusException.class,()->controls.chargeAgent(agent,1));
+   assertEquals(HttpStatus.TOO_MANY_REQUESTS,rejection.getStatusCode());
+   Integer used=db.queryForObject("SELECT SUM(calls) FROM dg_agent_minute_usage WHERE agent_id=?",Integer.class,agent);
+   assertEquals(60,used);
+  }finally {
+   db.update("DELETE FROM dg_agents WHERE id=?",agent);
+   db.update("DELETE FROM dg_users WHERE id=?",userId);
+  }
  }
 }
