@@ -200,6 +200,37 @@ class ControlApi {
    Integer minRows,Integer maxRows,String action,String approverId,Integer priority){}
  record Decision(String reason){}
  record Preapply(String agentId,String sourceId,String tableName,List<String> columns,Integer requestedRows){}
+ @GetMapping("/requests/preapply/agents")
+ List<Map<String,Object>> preapplyAgents(Authentication auth){
+  return db.queryForList("""
+   SELECT a.id,a.name FROM dg_agents a JOIN dg_users u ON u.id=a.owner_user_id
+   WHERE u.username=? AND u.enabled=1 AND u.must_change_password=0 AND a.enabled=1
+     AND a.revoked_at IS NULL AND a.expires_at>NOW(3)
+   ORDER BY a.name LIMIT 300
+   """,auth.getName());
+ }
+ /** Options are restricted to effective platform AND Agent grants and the logged-in Agent owner. */
+ @GetMapping("/requests/preapply/options")
+ List<Map<String,Object>> preapplyOptions(Authentication auth,@RequestParam String agentId){
+  String agent=Guard.id(agentId);
+  Integer owned=db.queryForObject("""
+    SELECT COUNT(*) FROM dg_agents a JOIN dg_users u ON u.id=a.owner_user_id
+    WHERE a.id=? AND u.username=? AND u.enabled=1 AND u.must_change_password=0
+      AND a.enabled=1 AND a.revoked_at IS NULL AND a.expires_at>NOW(3)
+    """,Integer.class,agent,auth.getName());
+  if(owned==null||owned!=1)throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Only Agent owner can apply");
+  return db.queryForList("""
+    SELECT s.id AS sourceId,s.name AS sourceName,t.table_name AS tableName,c.column_name AS columnName
+    FROM dg_agent_columns c
+    JOIN dg_agent_tables t ON t.agent_id=c.agent_id AND t.source_id=c.source_id AND t.table_name=c.table_name
+    JOIN dg_source_columns sc ON sc.source_id=c.source_id AND sc.table_name=c.table_name AND sc.column_name=c.column_name
+    JOIN dg_source_tables st ON st.source_id=c.source_id AND st.table_name=c.table_name
+    JOIN dg_sources s ON s.id=c.source_id
+    WHERE c.agent_id=? AND sc.enabled=1 AND st.enabled=1 AND s.enabled=1
+    ORDER BY s.name,t.table_name,c.column_name LIMIT 1000
+    """,agent);
+ }
+
  @PostMapping("/requests/preapply")
  Map<String,String> preapply(Authentication auth,@RequestBody Preapply in){
   if(in==null||in.requestedRows()==null)throw new ResponseStatusException(HttpStatus.BAD_REQUEST);

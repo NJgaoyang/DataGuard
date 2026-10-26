@@ -386,3 +386,11 @@
 .app-root .toolbar > .ant-btn-primary{margin-left:auto;order:20}
 .app-root .toolbar > .ant-input-search{order:0}
 .app-root .toolbar.record-filters > .toolbar-refresh{margin-left:auto}
+
+/* Larger, scannable preapproval form with explicit column selection. */
+.preapply-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.preapply-fields{border:1px solid #e1e8f0;border-radius:6px;min-height:132px;max-height:265px;overflow:auto}
+.preapply-fields-head{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid #edf0f4;color:#52657d;font-size:12px}
+.preapply-column-grid{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 14px;padding:16px!important}
+.preapply-column-grid .ant-checkbox-wrapper{margin-inline-start:0!important;overflow-wrap:anywhere}
+@media(max-width:700px){.preapply-form-grid{grid-template-columns:1fr}.preapply-column-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}

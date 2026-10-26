@@ -2,17 +2,30 @@
 import {computed,onMounted,ref,watch} from 'vue';
 import {api,stamp,match,page,fail,stateName,stateColor,type DataRow,type User} from '../api';
 const props=defineProps<{user:User;initialScope?:string}>();
-const tab=ref(props.initialScope||(props.user.roleCode==='READER'?'mine':'pending')),rows=ref<DataRow[]>([]),search=ref(''),detail=ref<DataRow|null>(null),reason=ref(''),busy=ref(false),requestHelpOpen=ref(false),preapplyBusy=ref(false),preapplyAgents=ref<DataRow[]>([]),preapplySources=ref<DataRow[]>([]),preapplyForm=ref({agentId:'',sourceId:'',tableName:'',columns:'',requestedRows:50});
+const tab=ref(props.initialScope||(props.user.roleCode==='READER'?'mine':'pending')),rows=ref<DataRow[]>([]),search=ref(''),detail=ref<DataRow|null>(null),reason=ref(''),busy=ref(false),requestHelpOpen=ref(false),preapplyBusy=ref(false),preapplyAgents=ref<DataRow[]>([]),preapplyOptions=ref<DataRow[]>([]),preapplyLoading=ref(false),preapplyForm=ref({agentId:'',sourceId:'',tableName:'',columns:[] as string[],requestedRows:50});
 const filtered=computed(()=>rows.value.filter(r=>match(r,search.value,['id','requesterName','agentName','tableName','sourceName'])));
 const canApprove=computed(()=>detail.value?.status==='PENDING'&&detail.value.approverUsername===props.user.username
  &&detail.value.ownerUsername!==props.user.username&&new Date(detail.value.expiresAt).getTime()>Date.now());
+const sourceOptions=computed(()=>[...new Map(preapplyOptions.value.map(x=>[x.sourceId,{value:x.sourceId,label:x.sourceName}])).values()]);
+const tableOptions=computed(()=>[...new Set(preapplyOptions.value.filter(x=>x.sourceId===preapplyForm.value.sourceId).map(x=>String(x.tableName)))].map(value=>({value,label:value})));
+const columnOptions=computed(()=>preapplyOptions.value.filter(x=>x.sourceId===preapplyForm.value.sourceId&&x.tableName===preapplyForm.value.tableName).map(x=>String(x.columnName)));
+function resetTable(){preapplyForm.value.tableName='';preapplyForm.value.columns=[];}
+function changeTable(value:string){preapplyForm.value.tableName=value;preapplyForm.value.columns=[...columnOptions.value];}
+async function changeAgent(value:string){
+ preapplyForm.value.agentId=value;preapplyForm.value.sourceId='';resetTable();preapplyOptions.value=[];
+ if(!value)return;
+ try{preapplyLoading.value=true;preapplyOptions.value=await api<DataRow[]>('/api/requests/preapply/options?agentId='+encodeURIComponent(value));}
+ catch(e){fail(e)}finally{preapplyLoading.value=false}
+}
 async function openPreapply(){try{
- [preapplyAgents.value,preapplySources.value]=await Promise.all([api('/api/agents'),api('/api/sources')]);
+ preapplyAgents.value=await api<DataRow[]>('/api/requests/preapply/agents');
+ preapplyForm.value={agentId:'',sourceId:'',tableName:'',columns:[],requestedRows:50};preapplyOptions.value=[];
  requestHelpOpen.value=true;
 }catch(e){fail(e)}}
 async function submitPreapply(){try{
  preapplyBusy.value=true;
- const parts=preapplyForm.value.columns.split(',').map(x=>x.trim()).filter(Boolean);
+ const parts=[...preapplyForm.value.columns];
+ if(!preapplyForm.value.agentId||!preapplyForm.value.sourceId||!preapplyForm.value.tableName||!parts.length)throw Error('请选择 Agent、数据源、数据表和至少一个字段');
  const result=await api<{id:string}>('/api/requests/preapply','POST',{...preapplyForm.value,columns:parts});
  requestHelpOpen.value=false;selectTab('mine');
  const record=await api<DataRow>('/api/requests/'+result.id);detail.value=record;
@@ -76,14 +89,22 @@ onMounted(()=>void refresh());defineExpose({refresh});
  </template>
 </div>
 </section>
- <a-modal v-model:open="requestHelpOpen" title="提前申请访问审批" ok-text="提交申请" :confirm-loading="preapplyBusy" @ok="submitPreapply">
-  <a-form layout="vertical">
-   <a-form-item label="Agent" required><a-select v-model:value="preapplyForm.agentId" placeholder="选择本人 Agent" :options="preapplyAgents.map(x=>({value:x.id,label:x.name}))"/></a-form-item>
-   <a-form-item label="数据源" required><a-select v-model:value="preapplyForm.sourceId" placeholder="选择数据源" :options="preapplySources.map(x=>({value:x.id,label:x.name}))"/></a-form-item>
-   <a-form-item label="数据表" required><a-input v-model:value="preapplyForm.tableName" placeholder="输入已授权的表名"/></a-form-item>
-   <a-form-item label="读取字段（逗号分隔）" required><a-input v-model:value="preapplyForm.columns" placeholder="例如 id,name；顺序须与实际读取一致"/></a-form-item>
+ <a-modal v-model:open="requestHelpOpen" title="提前申请访问审批" :width="860" ok-text="提交申请" :confirm-loading="preapplyBusy" @ok="submitPreapply">
+  <a-form layout="vertical" class="preapply-form">
+   <div class="preapply-form-grid">
+    <a-form-item label="Agent" required><a-select :value="preapplyForm.agentId||undefined" placeholder="选择本人 Agent" :options="preapplyAgents.map(x=>({value:x.id,label:x.name}))" @change="changeAgent"/></a-form-item>
+    <a-form-item label="数据源" required><a-select v-model:value="preapplyForm.sourceId" placeholder="选择已授权数据源" :loading="preapplyLoading" :disabled="!preapplyForm.agentId" :options="sourceOptions" @change="resetTable"/></a-form-item>
+   </div>
+   <a-form-item label="数据表" required><a-select :value="preapplyForm.tableName||undefined" placeholder="选择已授权数据表" :disabled="!preapplyForm.sourceId" :options="tableOptions" @change="changeTable"/></a-form-item>
+   <a-form-item label="读取字段" required>
+    <div class="preapply-fields">
+     <div class="preapply-fields-head"><span>可读取字段（已选 {{preapplyForm.columns.length}} / {{columnOptions.length}}）</span><a-checkbox :checked="!!columnOptions.length&&preapplyForm.columns.length===columnOptions.length" :indeterminate="preapplyForm.columns.length>0&&preapplyForm.columns.length<columnOptions.length" :disabled="!columnOptions.length" @change="preapplyForm.columns=$event.target.checked?[...columnOptions]:[]">全选</a-checkbox></div>
+     <a-checkbox-group v-model:value="preapplyForm.columns" :options="columnOptions.map(value=>({label:value,value}))" class="preapply-column-grid"/>
+     <a-empty v-if="!columnOptions.length" :image="undefined" description="请选择 Agent、数据源和数据表"/>
+    </div>
+   </a-form-item>
    <a-form-item label="最大读取行数" required><a-input-number v-model:value="preapplyForm.requestedRows" :min="1" :max="200"/></a-form-item>
   </a-form>
-  <p class="subtle">必须命中“需要审批”的访问规则。通过后，仅允许同一 Agent 在 24 小时内按相同字段顺序、行数及无筛选排序参数执行一次。不会在申请时执行 SQL。</p>
+  <p class="subtle">仅显示当前 Agent 已授权的表和字段。选择数据表后默认勾选全部可读字段；取消勾选可缩小申请范围。实际请求需要字段顺序、行数和查询参数完全匹配。</p>
  </a-modal>
 </template>
