@@ -39,7 +39,7 @@ class PolicyEngine {
  @Transactional
  public String preapply(Authentication auth,String agentId,String sourceId,String tableName,List<String> selected,int count){
   String agent=Guard.id(agentId),source=Guard.id(sourceId),table=Guard.identifier(tableName);
-  if(count<1||count>Math.min(200,db.queryForObject("SELECT COALESCE(MAX(setting_value),200) FROM dg_security_settings WHERE setting_key='max_rows_per_query'",Integer.class))||selected==null||selected.isEmpty()||selected.size()>100)
+  if(count<1||count>db.queryForObject("SELECT COALESCE(MAX(setting_value),200) FROM dg_security_settings WHERE setting_key='max_rows_per_query'",Integer.class)||selected==null||selected.isEmpty()||selected.size()>100)
    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid request dimensions");
   List<String> columns=selected.stream().map(Guard::identifier).distinct().toList();
   if(columns.size()!=selected.size())throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Duplicate columns");
@@ -252,7 +252,7 @@ class ControlApi {
  @PostMapping("/rules") Map<String,Object> createRule(Authentication auth,@RequestBody RuleInput in){
   Guard.admin(auth);
   if(in==null||in.minRows()==null||in.maxRows()==null||in.priority()==null||in.minRows()<1||
-   in.maxRows()>Math.min(200,db.queryForObject("SELECT COALESCE(MAX(setting_value),200) FROM dg_security_settings WHERE setting_key='max_rows_per_query'",Integer.class))||in.maxRows()<in.minRows()||in.priority()<1||in.priority()>10000||
+   in.maxRows()>db.queryForObject("SELECT COALESCE(MAX(setting_value),200) FROM dg_security_settings WHERE setting_key='max_rows_per_query'",Integer.class)||in.maxRows()<in.minRows()||in.priority()<1||in.priority()>10000||
    !Set.of("ALLOW","APPROVAL","DENY").contains(in.action()))
    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid rule");
   String table="*".equals(in.tableName())?"*":Guard.identifier(in.tableName());
@@ -276,7 +276,7 @@ class ControlApi {
  public Map<String,Object> updateRule(Authentication auth,@PathVariable String id,@RequestBody RuleInput in){
   Guard.admin(auth);
   if(in==null||in.minRows()==null||in.maxRows()==null||in.priority()==null||in.minRows()<1||
-     in.maxRows()>Math.min(200,db.queryForObject("SELECT COALESCE(MAX(setting_value),200) FROM dg_security_settings WHERE setting_key='max_rows_per_query'",Integer.class))||in.maxRows()<in.minRows()||in.priority()<1||in.priority()>10000||
+     in.maxRows()>db.queryForObject("SELECT COALESCE(MAX(setting_value),200) FROM dg_security_settings WHERE setting_key='max_rows_per_query'",Integer.class)||in.maxRows()<in.minRows()||in.priority()<1||in.priority()>10000||
      !Set.of("ALLOW","APPROVAL","DENY").contains(in.action()))
     throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid rule");
   String safe=Guard.id(id),table="*".equals(in.tableName())?"*":Guard.identifier(in.tableName());

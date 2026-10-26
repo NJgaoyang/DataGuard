@@ -59,7 +59,7 @@ class SecurityControls {
  @Transactional
  public void chargeAgent(String agentId,int requestedRows){
   String id=Guard.id(agentId);
-  if(requestedRows<0||requestedRows>200)throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
+  if(requestedRows<0||requestedRows>setting("max_rows_per_query",200))throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
   // One atomic UPSERT instead of INSERT IGNORE + UPDATE: the two-statement pattern
   // deadlocks under concurrent first-use of the same (agent, minute) unique key.
   // In this REQUIRED transaction, exceeding the quota throws and rolls back

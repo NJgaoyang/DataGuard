@@ -76,7 +76,7 @@ class McpGateway {
    if("tools/call".equals(method)&&"execute_readonly".equals(params.get("name"))){
     if(params.get("arguments") instanceof Map<?,?> arguments){
      Object size=arguments.get("limit");
-     requestedRows=size instanceof Integer n?Math.max(0,Math.min(200,n)):10;
+     requestedRows=size instanceof Integer n?Math.max(0,n):10;
     }else requestedRows=10;
    }
    securityControls.chargeAgent(String.valueOf(agent.get("id")),requestedRows);
@@ -121,7 +121,7 @@ class McpGateway {
   Map<String,Object> read=Map.of("type","object","properties",
     Map.of("sourceId",Map.of("type","string"),"tableName",Map.of("type","string"),
       "columns",Map.of("type","array","items",Map.of("type","string")),
-      "limit",Map.of("type","integer","minimum",1,"maximum",200),
+      "limit",Map.of("type","integer","minimum",1),
       "filterColumn",Map.of("type","string"),"filterValue",Map.of("type","string"),
       "sortColumn",Map.of("type","string"),"sortDirection",Map.of("type","string","enum",List.of("ASC","DESC"))),
     "required",List.of("sourceId","tableName","columns"));

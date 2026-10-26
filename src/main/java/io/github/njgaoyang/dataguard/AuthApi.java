@@ -151,14 +151,14 @@ class AuthApi {
   return Map.of("deleted",true);
  }
  @GetMapping("/api/security/limits") Map<String,Integer> securityLimits(){
-  return Map.of("maxRowsPerQuery",Math.max(1,Math.min(200,db.queryForObject(
-   "SELECT COALESCE(MAX(setting_value),200) FROM dg_security_settings WHERE setting_key='max_rows_per_query'",Integer.class))));
+  return Map.of("maxRowsPerQuery",Math.max(1,db.queryForObject(
+   "SELECT COALESCE(MAX(setting_value),200) FROM dg_security_settings WHERE setting_key='max_rows_per_query'",Integer.class)));
  }
  @GetMapping("/api/security/settings") Map<String,Integer> securitySettings(Authentication auth){
   Guard.admin(auth);return Map.of(
    "agentCallsPerMinute",db.queryForObject("SELECT setting_value FROM dg_security_settings WHERE setting_key='agent_calls_per_minute'",Integer.class),
    "agentRowsPerMinute",db.queryForObject("SELECT setting_value FROM dg_security_settings WHERE setting_key='agent_rows_per_minute'",Integer.class),
-   "maxRowsPerQuery",Math.max(1,Math.min(200,db.queryForObject("SELECT COALESCE(MAX(setting_value),200) FROM dg_security_settings WHERE setting_key='max_rows_per_query'",Integer.class))));
+   "maxRowsPerQuery",Math.max(1,db.queryForObject("SELECT COALESCE(MAX(setting_value),200) FROM dg_security_settings WHERE setting_key='max_rows_per_query'",Integer.class)));
  }
  record SecuritySettings(Integer agentCallsPerMinute,Integer agentRowsPerMinute,Integer maxRowsPerQuery){}
  @PutMapping("/api/security/settings") Map<String,Object> changeSecuritySettings(Authentication auth,@RequestBody SecuritySettings body){
@@ -166,7 +166,7 @@ class AuthApi {
   if(body==null||body.agentCallsPerMinute()==null||body.agentRowsPerMinute()==null||
     body.agentCallsPerMinute()<1||body.agentCallsPerMinute()>60||
     body.agentRowsPerMinute()<1||body.agentRowsPerMinute()>3000||
-    body.maxRowsPerQuery()==null||body.maxRowsPerQuery()<1||body.maxRowsPerQuery()>200)
+    body.maxRowsPerQuery()==null||body.maxRowsPerQuery()<1)
    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Security quota must not exceed defaults");
   db.update("UPDATE dg_security_settings SET setting_value=? WHERE setting_key='agent_calls_per_minute'",body.agentCallsPerMinute());
   db.update("UPDATE dg_security_settings SET setting_value=? WHERE setting_key='agent_rows_per_minute'",body.agentRowsPerMinute());
