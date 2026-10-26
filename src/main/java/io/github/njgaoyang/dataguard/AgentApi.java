@@ -19,7 +19,7 @@ import org.springframework.web.server.ResponseStatusException;
 class AgentApi {
  private final JdbcTemplate db;private final Audit audit;
  AgentApi(JdbcTemplate db,Audit audit){this.db=db;this.audit=audit;}
- record Create(String name,String ownerId,Integer validDays){}
+ record Create(String name,String ownerId,String expiresAt){}
  record TableGrant(String sourceId,String tableName){}
  record ColumnGrant(String sourceId,String tableName,String columnName){}
  static String digest(String secret){
@@ -47,7 +47,10 @@ class AgentApi {
   return admin(auth)?db.queryForList(q):db.queryForList(q,auth.getName());
  }
  @PostMapping Map<String,Object> create(Authentication auth,@RequestBody Create in){
-  if(in==null||in.validDays()==null||in.validDays()<1||in.validDays()>90)throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Token validity must be 1 to 90 days");
+  if(in==null||in.expiresAt()==null)throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Expiry required");
+  java.time.LocalDateTime expires;
+  try{expires=java.time.LocalDateTime.parse(in.expiresAt());}catch(java.time.format.DateTimeParseException ex){throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid expiry date");}
+  if(!expires.isAfter(java.time.LocalDateTime.now())||expires.isAfter(java.time.LocalDateTime.of(2099,12,31,23,59,59)))throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Expiry must be future and no later than 2099");
   String ownerId=in.ownerId()==null||in.ownerId().isBlank()?
    db.queryForObject("SELECT id FROM dg_users WHERE username=?",String.class,auth.getName()):Guard.id(in.ownerId());
   if(!admin(auth)&&!ownerId.equals(db.queryForObject("SELECT id FROM dg_users WHERE username=?",String.class,auth.getName())))
@@ -55,8 +58,8 @@ class AgentApi {
   Integer valid=db.queryForObject("SELECT COUNT(*) FROM dg_users WHERE id=? AND enabled=1 AND must_change_password=0",Integer.class,ownerId);
   if(valid==null||valid!=1)throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Owner not active");
   String id=UUID.randomUUID().toString(),token=newToken();
-  db.update("INSERT INTO dg_agents(id,owner_user_id,name,token_hash,expires_at) VALUES(?,?,?,?,DATE_ADD(NOW(3), INTERVAL ? DAY))",
-   id,ownerId,Guard.required(in.name(),120),digest(token),in.validDays());
+  db.update("INSERT INTO dg_agents(id,owner_user_id,name,token_hash,expires_at) VALUES(?,?,?,?,?)",
+   id,ownerId,Guard.required(in.name(),120),digest(token),java.sql.Timestamp.valueOf(expires));
   audit.log(auth.getName(),"AGENT_CREATED",null,id,"SUCCESS","");
   return Map.of("id",id,"token",token);
  }

@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import {computed,onMounted,ref,watch} from 'vue';
+import dayjs from 'dayjs';
 import {api,stamp,match,page,fail,confirm,stateName,stateColor,type DataRow,type User} from '../api';
 const props=defineProps<{user:User}>();
-const rows=ref<DataRow[]>([]),sources=ref<DataRow[]>([]),users=ref<DataRow[]>([]),selected=ref<DataRow|null>(null),search=ref(''),tab=ref('grants'),secret=ref(''),createOpen=ref(false),form=ref({name:'',ownerId:'',validDays:30}),grants=ref<DataRow>({tables:[],columns:[]}),
+const rows=ref<DataRow[]>([]),sources=ref<DataRow[]>([]),users=ref<DataRow[]>([]),selected=ref<DataRow|null>(null),search=ref(''),tab=ref('grants'),secret=ref(''),createOpen=ref(false),form=ref({name:'',ownerId:'',expiresAt:'2099-01-31T23:59:59'}),grants=ref<DataRow>({tables:[],columns:[]}),
  sourceId=ref(''),tableName=ref(''),columnName=ref(''),expiry=ref(30),testResult=ref<DataRow|null>(null),testBusy=ref(false),rotationDays=ref(30),usage=ref<DataRow>({stats:{},recent:[]}),editingGrants=ref(false),viewMode=ref<'view'|'edit'>('view'),expandedSources=ref<string[]>([]),grantSource=ref(''),selectedGrantTable=ref(''),grantSearch=ref('');
 const mcpEndpoint=window.location.origin+'/mcp';
 const filtered=computed(()=>rows.value.filter(r=>match(r,search.value,['name','ownerName'])));
@@ -22,7 +23,7 @@ async function rotate(){if(!selected.value)return;const id=selected.value.id;try
 }catch(e){fail(e)}}
 async function loadUsage(){if(!selected.value)return;try{usage.value=await api('/api/agents/'+selected.value.id+'/usage')}catch(e){fail(e)}}
 watch(tab,next=>{if(next==='usage')void loadUsage()});
-async function openCreate(){try{if(props.user.roleCode==='ADMIN')users.value=await api('/api/users');form.value={name:'',ownerId:'',validDays:30};createOpen.value=true}catch(e){fail(e)}}
+async function openCreate(){try{if(props.user.roleCode==='ADMIN')users.value=await api('/api/users');form.value={name:'',ownerId:'',expiresAt:'2099-01-31T23:59:59'};createOpen.value=true}catch(e){fail(e)}}
 async function save(){try{const data=await api<DataRow>('/api/agents','POST',{...form.value,ownerId:form.value.ownerId||null});createOpen.value=false;secret.value=data.token;await refresh()}catch(e){fail(e)}}
 async function revokeAgent(row:DataRow){try{await api('/api/agents/'+row.id+'/revoke','POST');selected.value=null;await refresh()}catch(e){fail(e)}}
 async function revoke(){if(selected.value)await revokeAgent(selected.value)}
@@ -115,7 +116,7 @@ onMounted(()=>void refresh());defineExpose({refresh});
  <a-modal v-model:open="createOpen" title="新建 Agent" ok-text="创建" @ok="save">
   <a-form layout="vertical"><a-form-item label="Agent 名称" required><a-input v-model:value="form.name"/></a-form-item>
    <a-form-item v-if="user.roleCode==='ADMIN'" label="所属用户"><a-select v-model:value="form.ownerId" placeholder="不选则归属本人" allow-clear :options="users.map(u=>({value:u.id,label:u.displayName}))"/></a-form-item>
-   <a-form-item label="有效期（天）"><a-input-number v-model:value="form.validDays" :min="1" :max="90"/></a-form-item>
+   <a-form-item label="有效截止时间" required><a-date-picker :value="dayjs(form.expiresAt)" show-time format="YYYY-MM-DD HH:mm:ss" style="width:100%" :disabled-date="(date:any)=>date.isBefore(dayjs(),'day')||date.isAfter(dayjs('2099-12-31'),'day')" @change="(date:any)=>form.expiresAt=date?date.format('YYYY-MM-DDTHH:mm:ss'):''"/></a-form-item>
   </a-form>
  </a-modal>
  <a-modal :open="!!secret" title="保存 Agent 访问令牌" :mask-closable="false" :closable="false" ok-text="我已保存" @ok="secret=''">
