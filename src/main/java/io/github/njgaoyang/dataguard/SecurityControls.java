@@ -55,17 +55,25 @@ class SecurityControls {
  public void chargeAgent(String agentId,int requestedRows){
   String id=Guard.id(agentId);
   if(requestedRows<0||requestedRows>200)throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
+  // One atomic UPSERT instead of INSERT IGNORE + UPDATE: the two-statement pattern
+  // deadlocks under concurrent first-use of the same (agent, minute) unique key.
+  // In this REQUIRED transaction, exceeding the quota throws and rolls back
+  // the increment, so accepted counters never exceed either limit.
   db.update("""
-    INSERT IGNORE INTO dg_agent_minute_usage(agent_id,minute_bucket,calls,requested_rows)
-    VALUES(?,DATE_FORMAT(NOW(),'%Y-%m-%d %H:%i:00'),0,0)
-    """,id);
-  int updated=db.update("""
-    UPDATE dg_agent_minute_usage SET calls=calls+1,requested_rows=requested_rows+?
+    INSERT INTO dg_agent_minute_usage(agent_id,minute_bucket,calls,requested_rows)
+    VALUES(?,DATE_FORMAT(NOW(),'%Y-%m-%d %H:%i:00'),1,?)
+    ON DUPLICATE KEY UPDATE
+      calls=calls+1,requested_rows=requested_rows+VALUES(requested_rows)
+    """,id,requestedRows);
+  Map<String,Object> current=db.queryForMap("""
+    SELECT calls,requested_rows AS requestedRows
+    FROM dg_agent_minute_usage
     WHERE agent_id=? AND minute_bucket=DATE_FORMAT(NOW(),'%Y-%m-%d %H:%i:00')
-      AND calls<60 AND requested_rows+?<=3000
-    """,requestedRows,id,requestedRows);
-  if(updated!=1)throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
-   "Agent quota exceeded: 60 calls and 3000 requested rows per minute");
+    """,id);
+  if(((Number)current.get("calls")).intValue()>60||
+      ((Number)current.get("requestedRows")).intValue()>3000)
+   throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
+     "Agent quota exceeded: 60 calls and 3000 requested rows per minute");
  }
  @Scheduled(fixedDelay=3_600_000,initialDelay=3_600_000)
  void purgeOldCounters(){
