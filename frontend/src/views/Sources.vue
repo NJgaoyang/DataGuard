@@ -5,15 +5,36 @@ const rows=ref<DataRow[]>([]),search=ref(''),selected=ref<DataRow|null>(null),ta
   sourceOpen=ref(false),form=ref({name:'',type:'MYSQL',host:'',port:3306,databaseName:'',username:'',password:''}),
   tables=ref<DataRow[]>([]),columns=ref<DataRow[]>([]),activeTable=ref(''),newTable=ref(''),newColumn=ref(''),busy=ref(false),connectBusy=ref(false),connectResult=ref<DataRow|null>(null),credentialOpen=ref(false),tableSearch=ref(''),selectedFields=ref<string[]>([]),credentialForm=ref({username:'',password:''});
 const shownTables=computed(()=>tables.value.filter(t=>String(t.tableName).toLowerCase().includes(tableSearch.value.toLowerCase())));
-const allFieldsSelected=computed(()=>columns.value.length>0&&selectedFields.value.length===columns.value.length);
-function toggleAllFields(){selectedFields.value=allFieldsSelected.value?[]:columns.value.map(c=>String(c.columnName));}
-async function grantSelectedFields(){if(!selected.value||!activeTable.value||!selectedFields.value.length)return;try{for(const name of selectedFields.value){const c=columns.value.find(x=>x.columnName===name);if(c&&!c.enabled)await api('/api/sources/'+selected.value.id+'/tables/'+activeTable.value+'/columns','POST',{name});}await loadColumns(activeTable.value)}catch(e){fail(e)}}
+const allFieldsSelected=computed(()=>columns.value.length>0&&columns.value.every(c=>c.enabled));
+const fieldsBusy=ref(false);
+async function toggleTableGrant(item:DataRow){if(!selected.value||fieldsBusy.value)return;
+ try{fieldsBusy.value=true;const url='/api/sources/'+selected.value.id+'/tables/'+item.tableName;
+  if(item.enabled){await api(url,'DELETE');if(activeTable.value===item.tableName)columns.value=[];}
+  else await api('/api/sources/'+selected.value.id+'/tables','POST',{name:item.tableName});
+  await loadTables();if(activeTable.value===item.tableName&& !item.enabled)await loadColumns(item.tableName);
+ }catch(e){fail(e)}finally{fieldsBusy.value=false}}
+async function setFieldGrant(row:DataRow,grant:boolean){if(!selected.value||!activeTable.value||fieldsBusy.value)return;
+ try{fieldsBusy.value=true;const url='/api/sources/'+selected.value.id+'/tables/'+activeTable.value+'/columns';
+  if(grant)await api(url,'POST',{name:row.columnName});else await api(url+'/'+row.columnName,'DELETE');
+  await loadColumns(activeTable.value);
+ }catch(e){fail(e)}finally{fieldsBusy.value=false}}
+async function toggleAllFields(){if(!selected.value||!activeTable.value||fieldsBusy.value||!columns.value.length)return;
+ const enable=!allFieldsSelected.value;
+ if(!enable){confirm('取消全选会撤销当前表所有字段授权，确定继续？',()=>applyAll(false));return;}
+ await applyAll(true);
+}
+async function applyAll(enable:boolean){if(!selected.value||!activeTable.value||fieldsBusy.value)return;
+ try{fieldsBusy.value=true;const url='/api/sources/'+selected.value.id+'/tables/'+activeTable.value+'/columns';
+  for(const c of columns.value){if(Boolean(c.enabled)===enable)continue;
+   if(enable)await api(url,'POST',{name:c.columnName});else await api(url+'/'+c.columnName,'DELETE');
+  }await loadColumns(activeTable.value);
+ }catch(e){fail(e)}finally{fieldsBusy.value=false}}
 const filtered=computed(()=>rows.value.filter(r=>match(r,search.value,['name','type','host'])));
 async function refresh(){try{rows.value=await api('/api/sources')}catch(e){fail(e)}}
 async function open(row:DataRow){selected.value=row;tab.value='fields';activeTable.value='';selectedFields.value=[];tableSearch.value='';await loadTables()}
-async function loadTables(){if(!selected.value)return;try{tables.value=await api('/api/sources/'+selected.value.id+'/tables')}catch(e){fail(e)}}
+async function loadTables(){if(!selected.value)return;try{tables.value=await api('/api/sources/'+selected.value.id+'/physical-tables')}catch{try{tables.value=await api('/api/sources/'+selected.value.id+'/tables')}catch(e){fail(e)}}}
 async function loadColumns(table:string){
- activeTable.value=table;selectedFields.value=[];
+ activeTable.value=table;
  const base='/api/sources/'+selected.value?.id+'/tables/'+table;
  try{
   const physical=await api<DataRow[]>(base+'/physical-columns');
@@ -87,18 +108,19 @@ onMounted(()=>void refresh());defineExpose({refresh});
       style="margin-top:12px"/>
    </a-tab-pane>
    <a-tab-pane key="fields" tab="字段权限">
-    <div class="inline-entry"><a-input v-model:value="newTable" placeholder="添加平台授权表"/><a-button type="primary" @click="addTable">授权表</a-button></div>
     <div class="picker-two-pane">
      <div class="picker-tables"><div class="picker-pane-head">数据表 <span>{{shownTables.length}}</span></div><a-input v-model:value="tableSearch" class="picker-search" allow-clear placeholder="搜索数据表"/>
-      <div class="picker-list"><button v-for="item in shownTables" :key="item.tableName" type="button" class="picker-table-item" :class="{active:activeTable===item.tableName}" @click="loadColumns(item.tableName)"><span class="picker-checkbox">{{activeTable===item.tableName?'✓':''}}</span>{{item.tableName}} <small v-if="!item.enabled">已停用</small></button><a-empty v-if="!shownTables.length" :image="undefined" description="暂无数据表"/></div>
+      <div class="picker-list"><div v-for="item in shownTables" :key="item.tableName" class="source-table-choice" :class="{active:activeTable===item.tableName}">
+       <a-checkbox :checked="!!item.enabled" :disabled="fieldsBusy" @change="toggleTableGrant(item)"/>
+       <button type="button" @click="loadColumns(item.tableName)">{{item.tableName}}</button>
+       <small v-if="item.enabled">已授权</small>
+      </div><a-empty v-if="!shownTables.length" :image="undefined" description="暂无数据表"/></div>
      </div>
-     <div class="picker-columns"><div class="picker-pane-head"><span>字段 <span>{{selectedFields.length}} / {{columns.length}}</span></span><a-button type="link" size="small" :disabled="!columns.length" @click="toggleAllFields">{{allFieldsSelected?'取消全选':'全选'}}</a-button></div>
-      <template v-if="activeTable"><div class="source-field-actions"><a-button size="small" type="primary" :disabled="!selectedFields.length" @click="grantSelectedFields">授权所选字段</a-button><a-button v-if="tables.find(t=>t.tableName===activeTable)?.enabled" size="small" danger @click="confirm('确认撤销该表所有读取权限？',()=>removeTable(activeTable))">撤销当前表</a-button></div>
-       <div class="source-field-list"><div v-for="c in columns" :key="c.columnName" class="source-field-row"><a-checkbox :checked="selectedFields.includes(c.columnName)" @change="selectedFields=$event.target.checked?[...selectedFields,c.columnName]:selectedFields.filter(x=>x!==c.columnName)">{{c.columnName}}</a-checkbox><span>{{c.enabled?'已授权':'未授权'}}</span><a-checkbox :checked="!!c.masked" :disabled="!c.enabled" @change="toggleMask(c.columnName)">脱敏</a-checkbox><a-button v-if="c.enabled" type="link" danger size="small" @click="confirm('撤销该字段读取权限？',()=>removeColumn(c.columnName))">撤销</a-button></div></div>
-      </template><a-empty v-else :image="undefined" description="请选择左侧数据表"/>
+     <div class="picker-columns"><div class="picker-pane-head"><span>字段 <span>{{columns.filter(c=>c.enabled).length}} / {{columns.length}}</span></span><a-button type="link" size="small" :disabled="!activeTable||!columns.length||fieldsBusy||!tables.find(t=>t.tableName===activeTable)?.enabled" @click="toggleAllFields">{{allFieldsSelected?'取消全选':'全选'}}</a-button></div>
+      <template v-if="activeTable"><div class="source-field-list"><div v-for="c in columns" :key="c.columnName" class="source-field-row"><a-checkbox :checked="!!c.enabled" :disabled="fieldsBusy||!tables.find(t=>t.tableName===activeTable)?.enabled" @change="setFieldGrant(c,$event.target.checked)">{{c.columnName}}</a-checkbox><a-checkbox :checked="!!c.masked" :disabled="!c.enabled||fieldsBusy" @change="toggleMask(c.columnName)">脱敏</a-checkbox></div></div></template><a-empty v-else :image="undefined" description="请选择左侧数据表"/>
      </div>
     </div>
-    <p class="subtle">全选只选择字段，点击“授权所选字段”后才会修改白名单。Agent 仍需单独授权。</p>
+    <p class="subtle">勾选表或字段后立即保存授权。撤销授权会同步取消对应的 Agent 授权。</p>
    </a-tab-pane>
    <a-tab-pane key="limit" tab="访问限制"><a-descriptions :column="1" bordered size="small">
     <a-descriptions-item label="平台安全上限">200 行 / 次</a-descriptions-item>

@@ -439,3 +439,8 @@
 .source-field-row{min-height:44px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #f1f4f8}
 .source-field-row>.ant-checkbox-wrapper{flex:1;min-width:0}
 .source-field-row>span{font-size:12px;color:#8c9aaa}
+
+.source-table-choice{display:flex;align-items:center;gap:10px;min-height:43px;padding:8px 10px;border-radius:5px;color:#425571}
+.source-table-choice.active{background:#e9f2ff;color:#1766e8}
+.source-table-choice button{flex:1;text-align:left;background:transparent;border:0;cursor:pointer;color:inherit;min-width:0}
+.source-table-choice small{font-size:11px;color:#8d9bab}

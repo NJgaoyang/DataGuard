@@ -103,6 +103,25 @@ class SourceApi {
    FROM dg_source_tables t WHERE t.source_id=? ORDER BY t.table_name
    """,Guard.id(id));
  }
+ @GetMapping("/{id}/physical-tables")
+ List<Map<String,Object>> physicalTables(Authentication auth,@PathVariable String id){
+  Guard.admin(auth);String safe=Guard.id(id);
+  Map<String,Object> source=sourceForRead(safe);
+  if(!allowedHosts.contains(String.valueOf(source.get("host"))))throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Source host is not approved");
+  List<Map<String,Object>> result=new java.util.ArrayList<>();
+  java.util.Map<String,Boolean> enabled=new java.util.HashMap<>();
+  for(Map<String,Object> t:tables(auth,id))enabled.put(String.valueOf(t.get("tableName")),Boolean.TRUE.equals(t.get("enabled")));
+  try(var conn=java.sql.DriverManager.getConnection(jdbcUrlFor(source),String.valueOf(source.get("username")),decryptPassword(source))){
+   conn.setReadOnly(true);
+   try(var rs=conn.getMetaData().getTables(String.valueOf(source.get("databaseName")),null,"%",new String[]{"TABLE","VIEW"})){
+    while(rs.next()&&result.size()<300){String name=rs.getString("TABLE_NAME");
+     if(name!=null&&name.matches("[A-Za-z][A-Za-z0-9_]{0,63}"))result.add(Map.of("tableName",name,"enabled",enabled.getOrDefault(name,false)));
+    }
+   }
+  }catch(java.sql.SQLException ex){throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,"Unable to inspect datasource tables");}
+  result.sort(java.util.Comparator.comparing(x->String.valueOf(x.get("tableName"))));
+  return result;
+ }
  @PostMapping("/{id}/tables") Map<String,Object> table(Authentication auth,@PathVariable String id,@RequestBody Grant in){
   Guard.admin(auth);String source=Guard.id(id),table=Guard.identifier(in.name());
   db.update("INSERT INTO dg_source_tables(source_id,table_name,enabled) VALUES(?,?,1) ON DUPLICATE KEY UPDATE enabled=1",source,table);
