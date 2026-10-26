@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import {computed,onMounted,reactive,ref} from 'vue';
+import {computed,onMounted,onUnmounted,reactive,ref,watch} from 'vue';
 import {
  DashboardOutlined,DatabaseOutlined,RobotOutlined,SafetyCertificateOutlined,
  AuditOutlined,FileSearchOutlined,SettingOutlined,MenuOutlined,ReloadOutlined,
  BellOutlined,LogoutOutlined,DownOutlined,LockOutlined,UserOutlined,EyeOutlined,EyeInvisibleOutlined,SecurityScanOutlined
 } from '@ant-design/icons-vue';
-import {api,fail,initCsrf,login,logout,type User} from './api';
+import {api,fail,initCsrf,login,logout,type User,type DataRow} from './api';
 import zhCN from 'ant-design-vue/es/locale/zh_CN';
 import Dashboard from './views/Dashboard.vue';
 import Sources from './views/Sources.vue';
@@ -25,6 +25,20 @@ const user=ref<User|null>(null),ready=ref(false),page=ref('dashboard'),
   currentPassword=ref(''),nextPassword=ref(''),changeOpen=ref(false),passwordBusy=ref(false),
   menuOpen=ref(false),reloadKey=ref(0);
 const recordId=ref<string|null>(null);
+const recordStatus=ref('all'),approvalScope=ref('');
+const notices=ref<DataRow[]>([]),unread=ref(0);
+async function fetchNotices(){
+ if(!user.value)return;
+ try{const v=await api<{unread:number;items:DataRow[]}>('/api/notifications');unread.value=v.unread;notices.value=v.items;}
+ catch{unread.value=0;notices.value=[];}
+}
+async function readNotice(id:number){
+ try{await api('/api/notifications/'+id+'/read','POST');await fetchNotices();navigate('approvals',{scope:'pending'});}
+ catch(e){fail(e);}
+}
+let noticeInterval:ReturnType<typeof setInterval>|undefined;
+watch(user,v=>{if(v)void fetchNotices();else{unread.value=0;notices.value=[]}});
+onUnmounted(()=>{if(noticeInterval)clearInterval(noticeInterval)});
 const loginModel=reactive({username:'',password:''});
 const passwordVisible=ref(false);
 const items=[
@@ -53,10 +67,13 @@ async function changePassword(){
   if(result.reauthenticate){user.value=null;changeOpen.value=false;currentPassword.value='';nextPassword.value='';await initCsrf();}
  }catch(e){fail(e)}finally{passwordBusy.value=false}
 }
-function navigate(name:string){recordId.value=null;page.value=name;menuOpen.value=false}
+function navigate(name:string,condition?:{status?:string;scope?:string}){
+ recordId.value=null;recordStatus.value=condition?.status||'all';approvalScope.value=condition?.scope||'';
+ page.value=name;menuOpen.value=false;
+}
 function openRecord(id:string){recordId.value=id;page.value='records';menuOpen.value=false}
 function refresh(){reloadKey.value++}
-onMounted(()=>void start());
+onMounted(()=>{void start();noticeInterval=setInterval(()=>{if(user.value)void fetchNotices()},60000)});
 </script>
 <template>
 <a-config-provider :theme="theme" :locale="zhCN">
@@ -111,11 +128,22 @@ onMounted(()=>void start());
    <button class="mobile-toggle" @click="menuOpen=!menuOpen" aria-label="打开导航"><MenuOutlined/></button>
    <nav class="console-breadcrumb" aria-label="页面路径">
     <button class="breadcrumb-home" @click="navigate('dashboard')">首页</button>
-    <span class="crumb-divider">/</span>
-    <span class="breadcrumb-current">{{title}}</span>
+    <template v-if="page!=='dashboard'"><span class="crumb-divider">/</span><span class="breadcrumb-current">{{title}}</span></template>
    </nav>
    <div class="topbar-actions">
-    <a-tooltip title="待审批请求"><button class="icon-button" aria-label="打开审批中心" @click="navigate('approvals')"><BellOutlined/></button></a-tooltip>
+    <a-dropdown :trigger="['click']" placement="bottomRight">
+     <a-badge :count="unread" :overflow-count="99" size="small">
+      <button class="icon-button" aria-label="查看审批通知"><BellOutlined/></button>
+     </a-badge>
+     <template #overlay><a-menu class="notice-menu">
+      <a-menu-item v-for="notice in notices.slice(0,8)" :key="notice.id" @click="readNotice(Number(notice.id))">
+       <span :style="{fontWeight:notice.readAt?400:600}">{{notice.content}}</span>
+      </a-menu-item>
+      <a-menu-item v-if="!notices.length" disabled>暂无新通知</a-menu-item>
+      <a-menu-divider/>
+      <a-menu-item @click="navigate('approvals',{scope:'pending'})">打开审批中心</a-menu-item>
+     </a-menu></template>
+    </a-dropdown>
     <a-dropdown :trigger="['click']">
      <button class="account-button"><span class="avatar">{{(user.displayName||user.username).slice(0,1)}}</span><span>{{user.displayName||user.username}}</span><DownOutlined/></button>
      <template #overlay><a-menu>
@@ -127,13 +155,13 @@ onMounted(()=>void start());
    </div>
   </header>
   <main class="workspace">
-   <div class="workspace-head"><h1>{{title}}</h1><a-button @click="refresh"><ReloadOutlined/> 刷新</a-button></div>
+   <div class="workspace-head"><h1>{{title}}</h1><div class="workspace-actions"><div id="workspace-actions"></div><a-button class="refresh-action" @click="refresh"><ReloadOutlined/> 刷新</a-button></div></div>
    <Dashboard v-if="page==='dashboard'" :key="'dashboard'+reloadKey" @navigate="navigate" @open-record="openRecord"/>
    <Sources v-else-if="page==='sources'&&admin" :key="'sources'+reloadKey"/>
    <Agents v-else-if="page==='agents'" :key="'agents'+reloadKey" :user="user"/>
    <Rules v-else-if="page==='rules'&&admin" :key="'rules'+reloadKey"/>
-   <Approvals v-else-if="page==='approvals'" :key="'approvals'+reloadKey" :user="user"/>
-   <Records v-else-if="page==='records'" :key="'records'+reloadKey" :initial-record-id="recordId" @close-detail="recordId=null"/>
+   <Approvals v-else-if="page==='approvals'" :key="'approvals'+reloadKey" :user="user" :initial-scope="approvalScope"/>
+   <Records v-else-if="page==='records'" :key="'records'+reloadKey" :initial-record-id="recordId" :initial-status="recordStatus" @close-detail="recordId=null"/>
    <Settings v-else-if="page==='settings'" :key="'settings'+reloadKey" :user="user" @change-password="changeOpen=true"/>
   </main>
  </div>

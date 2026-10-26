@@ -1,0 +1,7 @@
+[Unit]
+Description=DataGuard service, database and disk availability check
+After=network-online.target
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/dataguard-monitor
+User=root

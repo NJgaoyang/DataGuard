@@ -3,7 +3,7 @@ import {computed,onMounted,ref} from 'vue';
 import {api,match,page,fail,confirm,type DataRow} from '../api';
 const rows=ref<DataRow[]>([]),search=ref(''),selected=ref<DataRow|null>(null),tab=ref('fields'),
   sourceOpen=ref(false),form=ref({name:'',type:'MYSQL',host:'',port:3306,databaseName:'',username:'',password:''}),
-  tables=ref<DataRow[]>([]),columns=ref<DataRow[]>([]),activeTable=ref(''),newTable=ref(''),newColumn=ref(''),busy=ref(false);
+  tables=ref<DataRow[]>([]),columns=ref<DataRow[]>([]),activeTable=ref(''),newTable=ref(''),newColumn=ref(''),busy=ref(false),connectBusy=ref(false),connectResult=ref<DataRow|null>(null),credentialOpen=ref(false),credentialForm=ref({username:'',password:''});
 const filtered=computed(()=>rows.value.filter(r=>match(r,search.value,['name','type','host'])));
 async function refresh(){try{rows.value=await api('/api/sources')}catch(e){fail(e)}}
 async function open(row:DataRow){selected.value=row;tab.value='fields';activeTable.value='';await loadTables()}
@@ -21,6 +21,13 @@ async function loadColumns(table:string){
 }
 function create(){form.value={name:'',type:'MYSQL',host:'',port:3306,databaseName:'',username:'',password:''};sourceOpen.value=true}
 async function save(){try{busy.value=true;await api('/api/sources','POST',form.value);sourceOpen.value=false;await refresh()}catch(e){fail(e)}finally{busy.value=false}}
+async function testConnection(){if(!selected.value)return;try{
+ connectBusy.value=true;connectResult.value=await api('/api/sources/'+selected.value.id+'/test','POST');
+}catch(e){connectResult.value={ok:false};fail(e)}finally{connectBusy.value=false}}
+async function updateCredentials(){if(!selected.value)return;try{
+ await api('/api/sources/'+selected.value.id+'/credentials','POST',credentialForm.value);
+ credentialOpen.value=false;connectResult.value=null;credentialForm.value={username:'',password:''};
+}catch(e){fail(e)}}
 async function toggle(){if(!selected.value)return;try{await api('/api/sources/'+selected.value.id+'/toggle','POST');selected.value=null;await refresh()}catch(e){fail(e)}}
 async function addTable(){if(!selected.value||!newTable.value.trim())return;try{await api('/api/sources/'+selected.value.id+'/tables','POST',{name:newTable.value.trim()});newTable.value='';await loadTables();await refresh()}catch(e){fail(e)}}
 async function removeTable(table:string){if(!selected.value)return;try{await api('/api/sources/'+selected.value.id+'/tables/'+table,'DELETE');await loadTables()}catch(e){fail(e)}}
@@ -38,8 +45,7 @@ async function removeColumn(column:string){if(!selected.value)return;try{await a
 onMounted(()=>void refresh());defineExpose({refresh});
 </script>
 <template>
-<section v-if="!selected" class="panel">
- <div class="panel-head"><h2>数据源</h2><a-button type="primary" @click="create">＋ 新增数据源</a-button></div>
+<section v-if="!selected" class="panel"><teleport to="#workspace-actions"><a-button type="primary" @click="create">＋ 新增数据源</a-button></teleport>
  <div class="toolbar"><a-input-search class="search" v-model:value="search" allow-clear placeholder="搜索数据库名称、类型或主机"/></div>
  <a-table :data-source="filtered" row-key="id" :pagination="page" :scroll="{x:740}">
   <a-table-column title="名称"><template #default="{record}"><a-button type="link" class="name-link" @click="open(record)">{{record.name}}</a-button></template></a-table-column>
@@ -51,7 +57,7 @@ onMounted(()=>void refresh());defineExpose({refresh});
  </a-table>
 </section>
 <section v-else class="panel detail-page" aria-label="数据源详情页面">
- <div class="panel-head"><h2>数据源详情</h2><a-button @click="selected=null">返回数据源列表</a-button></div>
+ <teleport to="#workspace-actions"><a-button @click="selected=null">返回数据源列表</a-button></teleport>
  <div class="detail-content">
  <template v-if="selected">
   <div class="drawer-heading"><strong>{{selected.name}}</strong><a-tag :color="selected.enabled?'green':'red'">{{selected.enabled?'已开放':'已停用'}}</a-tag></div>
@@ -64,7 +70,15 @@ onMounted(()=>void refresh());defineExpose({refresh});
      <a-descriptions-item label="账号">{{selected.username}}</a-descriptions-item>
      <a-descriptions-item label="状态">{{selected.enabled?'正常':'已停用'}}</a-descriptions-item>
     </a-descriptions>
-    <div class="drawer-actions"><a-button :danger="selected.enabled" @click="confirm('确认更改数据源状态？',toggle)">{{selected.enabled?'停用数据源':'启用数据源'}}</a-button></div>
+    <div class="drawer-actions" style="align-items:center;flex-wrap:wrap">
+      <a-button :loading="connectBusy" @click="testConnection">测试连接</a-button>
+      <a-button @click="credentialForm={username:selected.username,password:''};credentialOpen=true">更新凭据</a-button>
+      <a-button :danger="selected.enabled" @click="confirm('确认更改数据源状态？',toggle)">{{selected.enabled?'停用数据源':'启用数据源'}}</a-button>
+    </div>
+    <a-alert v-if="connectResult" :type="connectResult.ok?'success':'error'" show-icon
+      :message="connectResult.ok?'连接成功':'连接失败'"
+      :description="connectResult.ok?'耗时 '+connectResult.latencyMs+' 毫秒':'请检查数据源地址、TLS 和只读凭据'"
+      style="margin-top:12px"/>
    </a-tab-pane>
    <a-tab-pane key="fields" tab="字段权限">
     <template v-if="!activeTable">
@@ -103,4 +117,10 @@ onMounted(()=>void refresh());defineExpose({refresh});
  <a-form-item label="只读用户名"><a-input v-model:value="form.username"/></a-form-item>
  <a-form-item class="full" label="密码"><a-input-password v-model:value="form.password" autocomplete="new-password"/></a-form-item></div></a-form>
 </a-modal>
+<a-modal v-model:open="credentialOpen" title="更新只读账号" ok-text="保存" @ok="updateCredentials">
+  <a-form layout="vertical">
+   <a-form-item label="只读用户名" required><a-input v-model:value="credentialForm.username"/></a-form-item>
+   <a-form-item label="新密码" required><a-input-password v-model:value="credentialForm.password" autocomplete="new-password"/></a-form-item>
+  </a-form>
+ </a-modal>
 </template>

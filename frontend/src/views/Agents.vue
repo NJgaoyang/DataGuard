@@ -3,7 +3,7 @@ import {computed,onMounted,ref,watch} from 'vue';
 import {api,stamp,match,page,fail,confirm,type DataRow,type User} from '../api';
 const props=defineProps<{user:User}>();
 const rows=ref<DataRow[]>([]),sources=ref<DataRow[]>([]),users=ref<DataRow[]>([]),selected=ref<DataRow|null>(null),search=ref(''),tab=ref('grants'),secret=ref(''),createOpen=ref(false),form=ref({name:'',ownerId:'',validDays:30}),grants=ref<DataRow>({tables:[],columns:[]}),
- sourceId=ref(''),tableName=ref(''),columnName=ref(''),expiry=ref(30),usage=ref<DataRow>({stats:{},recent:[]}),editingGrants=ref(false);
+ sourceId=ref(''),tableName=ref(''),columnName=ref(''),expiry=ref(30),testResult=ref<DataRow|null>(null),testBusy=ref(false),rotationDays=ref(30),usage=ref<DataRow>({stats:{},recent:[]}),editingGrants=ref(false);
 const mcpEndpoint=window.location.origin+'/mcp';
 const filtered=computed(()=>rows.value.filter(r=>match(r,search.value,['name','ownerName'])));
 const sourceName=(id:string)=>sources.value.find(s=>s.id===id)?.name||'数据源';
@@ -11,6 +11,11 @@ const columnsFor=(r:DataRow)=>(grants.value.columns||[]).filter((c:DataRow)=>c.s
 const status=(r:DataRow)=>r.revokedAt||!r.enabled?'已停用':new Date(r.expiresAt).getTime()<Date.now()?'已过期':'正常';
 async function refresh(){try{rows.value=await api('/api/agents')}catch(e){fail(e)}}
 async function open(row:DataRow){selected.value=row;tab.value='grants';editingGrants.value=false;usage.value={stats:{},recent:[]};try{grants.value=await api('/api/agents/'+row.id+'/grants');if(props.user.roleCode==='ADMIN')sources.value=await api('/api/sources')}catch(e){fail(e)}}
+async function testAgent(){if(!selected.value)return;try{testBusy.value=true;testResult.value=await api('/api/agents/'+selected.value.id+'/check')}catch(e){fail(e)}finally{testBusy.value=false}}
+async function rotate(){if(!selected.value)return;const id=selected.value.id;try{
+ const updated=await api<DataRow>('/api/agents/'+id+'/rotate','POST',{validDays:rotationDays.value});
+ secret.value=updated.token;await refresh();
+}catch(e){fail(e)}}
 async function loadUsage(){if(!selected.value)return;try{usage.value=await api('/api/agents/'+selected.value.id+'/usage')}catch(e){fail(e)}}
 watch(tab,next=>{if(next==='usage')void loadUsage()});
 async function openCreate(){try{if(props.user.roleCode==='ADMIN')users.value=await api('/api/users');form.value={name:'',ownerId:'',validDays:30};createOpen.value=true}catch(e){fail(e)}}
@@ -23,7 +28,7 @@ async function removeColumn(r:DataRow){if(!selected.value)return;try{await api('
 onMounted(()=>void refresh());defineExpose({refresh});
 </script>
 <template>
-<section v-if="!selected" class="panel"><div class="panel-head"><h2>Agent 管理</h2><a-button type="primary" @click="openCreate">＋ 新建 Agent</a-button></div>
+<section v-if="!selected" class="panel"><teleport to="#workspace-actions"><a-button type="primary" @click="openCreate">＋ 新建 Agent</a-button></teleport>
  <div class="toolbar"><a-input-search v-model:value="search" class="search" allow-clear placeholder="搜索 Agent 名称或所属用户"/></div>
  <a-table :data-source="filtered" :pagination="page" row-key="id" :scroll="{x:770}">
  <a-table-column title="Agent 名称"><template #default="{record}"><a-button type="link" class="name-link" @click="open(record)">♧ {{record.name}}</a-button></template></a-table-column>
@@ -33,7 +38,7 @@ onMounted(()=>void refresh());defineExpose({refresh});
  <a-table-column title="操作"><template #default="{record}"><a-button type="link" @click="open(record)">查看</a-button></template></a-table-column>
  </a-table></section>
  <section v-else class="panel detail-page" aria-label="Agent 详情页面">
- <div class="panel-head"><h2>Agent 详情</h2><a-button @click="selected=null">返回 Agent 列表</a-button></div>
+ <teleport to="#workspace-actions"><a-button @click="selected=null">返回 Agent 列表</a-button></teleport>
  <div class="detail-content">
   <template v-if="selected"><div class="drawer-heading"><strong>{{selected.name}}</strong><a-tag :color="status(selected)==='正常'?'green':'red'">{{status(selected)}}</a-tag></div>
    <a-tabs v-model:active-key="tab">
@@ -42,7 +47,18 @@ onMounted(()=>void refresh());defineExpose({refresh});
      <a-descriptions-item label="所属用户">{{selected.ownerName}}</a-descriptions-item>
      <a-descriptions-item label="到期时间">{{stamp(selected.expiresAt)}}</a-descriptions-item>
      <a-descriptions-item label="MCP 地址">{{mcpEndpoint}}</a-descriptions-item>
-    </a-descriptions><div class="drawer-actions"><a-button danger @click="confirm('撤销后令牌立即失效，确认？',revoke)">撤销 Agent</a-button></div></a-tab-pane>
+    </a-descriptions>
+    <div class="drawer-actions" style="align-items:center;flex-wrap:wrap">
+     <a-button :loading="testBusy" @click="testAgent">接入检测</a-button>
+     <a-input-number v-model:value="rotationDays" :min="1" :max="90" :step="1" style="width:90px"/>
+     <a-button @click="confirm('令牌轮换后，原 Token 会立即失效，确认？',rotate)">轮换 Token</a-button>
+     <a-button danger @click="confirm('撤销后令牌立即失效，确认？',revoke)">撤销 Agent</a-button>
+    </div>
+    <a-alert v-if="testResult" :type="testResult.ready?'success':'warning'" show-icon
+      :message="testResult.ready?'Agent 授权就绪':'Agent 尚未满足接入条件'"
+      :description="'有效授权字段：'+(testResult.authorizedColumns??0)+' · MCP 地址：'+mcpEndpoint"
+      style="margin-top:12px"/>
+    </a-tab-pane>
     <a-tab-pane key="grants" tab="访问授权">
      <div class="drawer-section-title">可访问的数据源和表</div>
      <div v-if="!(grants.tables||[]).length" class="subtle">尚未为当前 Agent 授权数据表。</div>

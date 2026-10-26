@@ -54,6 +54,41 @@ class SourceApi {
   audit.log(auth.getName(),"SOURCE_CREATED",null,id,"SUCCESS","");
   return Map.of("id",id);
  }
+
+ record CredentialUpdate(String username,String password){}
+ @PostMapping("/{id}/credentials")
+ Map<String,Object> credentials(Authentication auth,@PathVariable String id,@RequestBody CredentialUpdate input){
+  Guard.admin(auth);String safe=Guard.id(id);
+  if(input==null||input.password()==null||input.password().isBlank()||input.password().length()>512)
+   throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid datasource credentials");
+  int rows=db.update("UPDATE dg_sources SET read_username=?,password_ciphertext=? WHERE id=?",
+    Guard.required(input.username(),100),crypto.encrypt(input.password()),safe);
+  if(rows!=1)throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+  audit.log(auth.getName(),"SOURCE_CREDENTIALS_UPDATED",null,safe,"SUCCESS","Credentials changed");
+  return Map.of("updated",true);
+ }
+ @PostMapping("/{id}/test")
+ Map<String,Object> testConnection(Authentication auth,@PathVariable String id){
+  Guard.admin(auth);String safe=Guard.id(id);
+  Map<String,Object> source=sourceForRead(safe);
+  if(!allowedHosts.contains(String.valueOf(source.get("host"))))
+    throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Source host not approved");
+  long started=System.nanoTime();
+  try(var conn=java.sql.DriverManager.getConnection(jdbcUrlFor(source),
+     String.valueOf(source.get("username")),decryptPassword(source));
+     var stmt=conn.createStatement()){
+   conn.setReadOnly(true);
+   stmt.setQueryTimeout(3);
+   try(var rs=stmt.executeQuery("SELECT 1")){if(!rs.next())throw new java.sql.SQLException("No test result");}
+   long ms=java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-started);
+   audit.log(auth.getName(),"SOURCE_CONNECTION_TEST",null,safe,"SUCCESS","durationMs="+ms);
+   return Map.of("ok",true,"latencyMs",ms,"driver",String.valueOf(source.get("type")));
+  }catch(java.sql.SQLException ex){
+   audit.log(auth.getName(),"SOURCE_CONNECTION_TEST",null,safe,"ERROR",
+       ex.getSQLState()==null?"Unable to connect":"JDBC SQL state "+ex.getSQLState());
+   throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,"Database connection test failed; check host, TLS and credentials");
+  }
+ }
  @PostMapping("/{id}/toggle") Map<String,Object> toggle(Authentication auth,@PathVariable String id){
   Guard.admin(auth);int count=db.update("UPDATE dg_sources SET enabled=NOT enabled WHERE id=?",Guard.id(id));
   if(count!=1)throw new ResponseStatusException(HttpStatus.NOT_FOUND);

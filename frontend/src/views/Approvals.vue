@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import {computed,onMounted,ref} from 'vue';
 import {api,stamp,match,page,fail,stateName,stateColor,type DataRow,type User} from '../api';
-const props=defineProps<{user:User}>();
-const tab=ref(props.user.roleCode==='READER'?'mine':'pending'),rows=ref<DataRow[]>([]),search=ref(''),detail=ref<DataRow|null>(null),reason=ref(''),busy=ref(false);
+const props=defineProps<{user:User;initialScope?:string}>();
+const tab=ref(props.initialScope||(props.user.roleCode==='READER'?'mine':'pending')),rows=ref<DataRow[]>([]),search=ref(''),detail=ref<DataRow|null>(null),reason=ref(''),busy=ref(false);
 const filtered=computed(()=>rows.value.filter(r=>match(r,search.value,['id','requesterName','agentName','tableName','sourceName'])));
 const canApprove=computed(()=>detail.value?.status==='PENDING'&&detail.value.approverUsername===props.user.username
  &&detail.value.ownerUsername!==props.user.username&&new Date(detail.value.expiresAt).getTime()>Date.now());
@@ -15,7 +15,6 @@ onMounted(()=>void refresh());defineExpose({refresh});
 </script>
 <template>
 <section v-if="!detail" class="panel">
- <div class="panel-head"><h2>审批中心</h2></div>
  <div class="toolbar stack">
  <a-radio-group :value="tab" button-style="solid" @change="selectTab($event.target.value)">
   <a-radio-button v-if="user.roleCode!=='READER'" value="pending">待我审批</a-radio-button>
@@ -35,7 +34,7 @@ onMounted(()=>void refresh());defineExpose({refresh});
  </a-table>
 </section>
 <section v-else class="panel detail-page" aria-label="审批详情页面">
- <div class="panel-head"><h2>审批详情</h2><a-button @click="detail=null">返回审批列表</a-button></div>
+ <teleport to="#workspace-actions"><a-button @click="detail=null">返回审批列表</a-button></teleport>
  <div class="detail-content">
  <template v-if="detail">
   <div class="drawer-heading"><strong>{{detail.tableName}} 数据读取申请</strong><a-tag :color="stateColor(detail.status)">{{stateName[detail.status]||detail.status}}</a-tag></div>

@@ -39,7 +39,7 @@ class SecurityConfig {
     .roles((String)r.get(0).get("role_code")).build();
   };
  }
- @Bean SecurityFilterChain security(HttpSecurity http,JdbcTemplate db) throws Exception {
+ @Bean SecurityFilterChain security(HttpSecurity http,JdbcTemplate db,SecurityControls controls) throws Exception {
   http.csrf(csrf->csrf.ignoringRequestMatchers(PathPatternRequestMatcher.withDefaults().matcher("/mcp")))
    .authorizeHttpRequests(auth->auth
     .requestMatchers("/api/csrf","/mcp","/actuator/health","/assets/**","/","/index.html","/favicon.ico").permitAll()
@@ -47,12 +47,13 @@ class SecurityConfig {
    .exceptionHandling(e->e.defaultAuthenticationEntryPointFor(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED),
       PathPatternRequestMatcher.withDefaults().matcher("/api/**")))
    .formLogin(login->login.loginProcessingUrl("/login")
-     .successHandler((req,res,auth)->{res.setContentType("application/json");res.getWriter().write("{\"ok\":true}");})
-     .failureHandler((req,res,ex)->res.sendError(401,"Invalid credentials")).permitAll())
+     .successHandler((req,res,auth)->{controls.successfulLogin(auth.getName());res.setContentType("application/json");res.getWriter().write("{\"ok\":true}");})
+     .failureHandler((req,res,ex)->{controls.failedLogin(req.getParameter("username"));res.sendError(401,"Invalid credentials");}).permitAll())
    .logout(logout->logout.logoutUrl("/logout").logoutSuccessHandler((req,res,auth)->res.setStatus(204))
      .invalidateHttpSession(true).deleteCookies("JSESSIONID"))
    .sessionManagement(s->s.sessionFixation(f->f.migrateSession()))
-   .addFilterAfter(new InitialPasswordGuard(db),org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter.class);
+   .addFilterAfter(new InitialPasswordGuard(db),org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter.class)
+   .addFilterBefore(new LoginLockFilter(controls),org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter.class);
   return http.build();
  }
 }

@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import {computed,onMounted,ref} from 'vue';
+import {computed,onMounted,ref,watch} from 'vue';
 import {api,fail,match,page,confirm,type DataRow,type User} from '../api';
 const props=defineProps<{user:User}>();
 const emit=defineEmits<{changePassword:[]}>();
 const active=ref('profile'),rows=ref<DataRow[]>([]),search=ref(''),createOpen=ref(false),
  form=ref({username:'',displayName:'',roleCode:'READER',password:''});
 const filtered=computed(()=>rows.value.filter(r=>match(r,search.value,['username','displayName'])));
+const ops=ref<DataRow|null>(null),opsBusy=ref(false);
+async function loadOps(){try{opsBusy.value=true;ops.value=await api('/api/ops/overview')}catch(e){fail(e)}finally{opsBusy.value=false}}
+watch(active,next=>{if(next==='ops')void loadOps()});
 async function refresh(){if(props.user.roleCode==='ADMIN')try{rows.value=await api('/api/users')}catch(e){fail(e)}}
 async function save(){try{await api('/api/users','POST',form.value);createOpen.value=false;await refresh()}catch(e){fail(e)}}
 async function toggle(row:DataRow){try{await api('/api/users/'+row.id+'/toggle','POST');await refresh()}catch(e){fail(e)}}
@@ -16,7 +19,18 @@ onMounted(()=>void refresh());defineExpose({refresh});
   <a-tab-pane key="profile" tab="账户信息"><section class="panel"><div class="panel-head"><h2>当前账户</h2><a-button type="primary" @click="emit('changePassword')">修改密码</a-button></div>
    <a-descriptions :column="1" size="small" style="padding:14px"><a-descriptions-item label="姓名">{{user.displayName}}</a-descriptions-item><a-descriptions-item label="用户名">{{user.username}}</a-descriptions-item><a-descriptions-item label="角色">{{user.roleCode==='ADMIN'?'管理员':user.roleCode==='APPROVER'?'审批人':'普通用户'}}</a-descriptions-item></a-descriptions>
   </section></a-tab-pane>
-  <a-tab-pane v-if="user.roleCode==='ADMIN'" key="users" tab="用户管理"><section class="panel">
+  <a-tab-pane v-if="user.roleCode==='ADMIN'" key="ops" tab="运行监控"><section class="panel">
+  <div class="panel-head"><h2>运行监控</h2><a-button :loading="opsBusy" @click="loadOps">刷新指标</a-button></div>
+  <a-descriptions :column="1" bordered size="small" style="padding:14px" v-if="ops">
+   <a-descriptions-item label="启用 Agent">{{ops.totalAgents}}</a-descriptions-item>
+   <a-descriptions-item label="启用数据源">{{ops.totalSources}}</a-descriptions-item>
+   <a-descriptions-item label="待审批">{{ops.pendingApprovals}}</a-descriptions-item>
+   <a-descriptions-item label="24 小时访问">{{ops.readsLast24h}}</a-descriptions-item>
+   <a-descriptions-item label="24 小时失败或拒绝">{{ops.failedLast24h}}</a-descriptions-item>
+   <a-descriptions-item label="24 小时 MCP 错误">{{ops.mcpErrorsLast24h}}</a-descriptions-item>
+   <a-descriptions-item label="锁定账户">{{ops.loginLockedAccounts}}</a-descriptions-item>
+  </a-descriptions></section></a-tab-pane>
+ <a-tab-pane v-if="user.roleCode==='ADMIN'" key="users" tab="用户管理"><section class="panel">
    <div class="panel-head"><h2>系统用户</h2><a-button type="primary" @click="form={username:'',displayName:'',roleCode:'READER',password:''};createOpen=true">＋ 新增用户</a-button></div>
    <div class="toolbar"><a-input-search v-model:value="search" class="search" allow-clear placeholder="搜索姓名或用户名"/></div>
    <a-table :data-source="filtered" row-key="id" :pagination="page" :scroll="{x:670}">

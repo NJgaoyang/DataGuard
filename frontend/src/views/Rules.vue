@@ -29,7 +29,7 @@ const condition=(row:DataRow)=>'读取 '+row.minRows+'～'+row.maxRows+' 行'+(r
 onMounted(()=>void refresh());defineExpose({refresh});
 </script>
 <template>
- <section v-if="!selected" class="panel"><div class="panel-head"><h2>访问规则</h2><a-button type="primary" @click="openCreate">＋ 新建规则</a-button></div>
+ <section v-if="!selected" class="panel"><teleport to="#workspace-actions"><a-button type="primary" @click="openCreate">＋ 新建规则</a-button></teleport>
  <div class="toolbar"><a-input-search v-model:value="search" allow-clear class="search" placeholder="搜索规则名称或适用范围"/></div>
  <a-table :data-source="filtered" row-key="id" :pagination="page" :scroll="{x:850}">
  <a-table-column title="规则名称"><template #default="{record}"><a-button type="link" class="name-link" @click="selected=record">{{record.name}}</a-button></template></a-table-column>
@@ -41,7 +41,7 @@ onMounted(()=>void refresh());defineExpose({refresh});
  <a-table-column title="操作"><template #default="{record}"><a-button type="link" @click="selected=record">查看</a-button></template></a-table-column>
  </a-table></section>
  <section v-else class="panel detail-page" aria-label="规则详情页面">
- <div class="panel-head"><h2>规则详情</h2><a-button @click="selected=null">返回规则列表</a-button></div>
+ <teleport to="#workspace-actions"><a-button @click="selected=null">返回规则列表</a-button></teleport>
  <div class="detail-content">
  <a-descriptions v-if="selected" :column="1" size="small" bordered>
  <a-descriptions-item label="规则名称">{{selected.name}}</a-descriptions-item>

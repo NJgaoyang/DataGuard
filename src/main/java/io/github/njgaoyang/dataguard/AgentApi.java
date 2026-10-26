@@ -64,6 +64,43 @@ class AgentApi {
   audit.log(auth.getName(),"AGENT_REVOKED",null,id,"SUCCESS","");
   return Map.of("updated",true);
  }
+
+ // One-time secret on successful rotation; previous credential becomes invalid immediately.
+ @org.springframework.transaction.annotation.Transactional
+ @PostMapping("/{id}/rotate")
+ Map<String,Object> rotate(Authentication auth,@PathVariable String id,@RequestBody Rotate request){
+  own(auth,id);
+  if(request==null||request.validDays()==null||request.validDays()<1||request.validDays()>90)
+   throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Token validity must be 1 to 90 days");
+  String token=newToken();
+  int n=db.update("UPDATE dg_agents SET token_hash=?,expires_at=DATE_ADD(NOW(3),INTERVAL ? DAY) WHERE id=? AND enabled=1 AND revoked_at IS NULL",
+   digest(token),request.validDays(),Guard.id(id));
+  if(n!=1)throw new ResponseStatusException(HttpStatus.CONFLICT,"Agent already revoked");
+  audit.log(auth.getName(),"AGENT_TOKEN_ROTATED",null,id,"SUCCESS","");
+  return Map.of("token",token,"id",Guard.id(id));
+ }
+ record Rotate(Integer validDays){}
+
+ // Safe connectivity precheck: returns effective grants and identity validity, never the secret.
+ @GetMapping("/{id}/check")
+ Map<String,Object> check(Authentication auth,@PathVariable String id){
+  own(auth,id);String agent=Guard.id(id);
+  Map<String,Object> status=db.queryForMap("""
+   SELECT a.enabled,a.expires_at AS expiresAt,a.revoked_at AS revokedAt,
+    u.enabled AS ownerEnabled,
+    (SELECT COUNT(*) FROM dg_agent_columns c JOIN dg_source_columns sc ON
+      sc.source_id=c.source_id AND sc.table_name=c.table_name AND sc.column_name=c.column_name
+      JOIN dg_source_tables st ON st.source_id=c.source_id AND st.table_name=c.table_name
+      JOIN dg_sources ds ON ds.id=c.source_id
+      WHERE c.agent_id=a.id AND sc.enabled=1 AND st.enabled=1 AND ds.enabled=1) AS effectiveColumns
+   FROM dg_agents a JOIN dg_users u ON u.id=a.owner_user_id WHERE a.id=?
+   """,agent);
+  boolean active=Boolean.TRUE.equals(status.get("enabled"))&&
+   Boolean.TRUE.equals(status.get("ownerEnabled"))&&status.get("revokedAt")==null&&
+   ((java.sql.Timestamp)status.get("expiresAt")).after(new java.util.Date());
+  return Map.of("agentActive",active,"authorizedColumns",status.get("effectiveColumns"),
+    "mcpEndpoint","/mcp","ready",active&&((Number)status.get("effectiveColumns")).intValue()>0);
+ }
  @GetMapping("/{id}/grants") Map<String,Object> grants(Authentication auth,@PathVariable String id){
   own(auth,id);
   return Map.of(

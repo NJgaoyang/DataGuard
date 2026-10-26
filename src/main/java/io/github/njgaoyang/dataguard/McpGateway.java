@@ -24,15 +24,16 @@ class McpGateway {
  private final BusinessReadExecutor executor;
  private final PolicyEngine policy;
  private final Audit audit;
+ private final SecurityControls securityControls;
  private final com.fasterxml.jackson.databind.ObjectMapper json;
  private final Set<String> allowedHosts;
  private final Semaphore slots;
  private final int timeoutSeconds;
- McpGateway(JdbcTemplate db,AgentApi agents,SourceApi sources,PolicyEngine policy,Audit audit,BusinessReadExecutor executor,com.fasterxml.jackson.databind.ObjectMapper json,
+ McpGateway(JdbcTemplate db,AgentApi agents,SourceApi sources,PolicyEngine policy,Audit audit,SecurityControls securityControls,BusinessReadExecutor executor,com.fasterxml.jackson.databind.ObjectMapper json,
    @Value("${dataguard.allowed-source-hosts:}") String hosts,
    @Value("${dataguard.max-concurrency:4}") int concurrency,
    @Value("${dataguard.query-timeout-seconds:5}") int timeoutSeconds){
-  this.db=db;this.agents=agents;this.sources=sources;this.policy=policy;this.audit=audit;this.executor=executor;this.json=json;
+  this.db=db;this.agents=agents;this.sources=sources;this.policy=policy;this.audit=audit;this.securityControls=securityControls;this.executor=executor;this.json=json;
   this.allowedHosts=new HashSet<>(Arrays.stream(hosts.split(",")).map(String::trim).filter(s->!s.isBlank()).toList());
   this.slots=new Semaphore(Math.max(1,Math.min(32,concurrency)));
   this.timeoutSeconds=Math.max(1,Math.min(30,timeoutSeconds));
@@ -71,6 +72,14 @@ class McpGateway {
    return error(id,-32600,"Unsupported MCP protocol version");
   try{
    Map<String,Object> params=request.get("params") instanceof Map<?,?> p?(Map<String,Object>)p:Map.of();
+   int requestedRows=0;
+   if("tools/call".equals(method)&&"execute_readonly".equals(params.get("name"))){
+    if(params.get("arguments") instanceof Map<?,?> arguments){
+     Object size=arguments.get("limit");
+     requestedRows=size instanceof Integer n?Math.max(0,Math.min(200,n)):10;
+    }else requestedRows=10;
+   }
+   securityControls.chargeAgent(String.valueOf(agent.get("id")),requestedRows);
    Object result=switch(method){
     case "initialize" -> Map.of("protocolVersion","2025-11-25","capabilities",Map.of("tools",Map.of()),
       "serverInfo",Map.of("name","DataGuard","version","1.0.0"));
@@ -84,6 +93,11 @@ class McpGateway {
    return ResponseEntity.ok(reply(id,"result",toolResult(Map.of(
     "status","PENDING","requestId",ex.requestId,"message","Human approval required; poll get_access_request, then retry the exact query."),true)));
   }catch(ResponseStatusException ex){
+   if(ex.getStatusCode()==HttpStatus.TOO_MANY_REQUESTS){
+    audit.log(String.valueOf(agent.get("name")),"MCP_QUOTA",null,method,"DENIED","Agent rate limit exceeded");
+    return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).header("Retry-After","60").body(
+      reply(id,"error",Map.of("code",-32029,"message","Agent quota exceeded")));
+   }
    audit.log(String.valueOf(agent.get("name")),"MCP_DENIED",null,method,"DENIED","Protected request rejected");
    return error(id,-32003,"Access denied or invalid request");
   }catch(Exception ex){

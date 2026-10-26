@@ -313,3 +313,34 @@
  .app-root .detail-content .ant-descriptions-item-label{width:105px}
  .app-root .record-filters .ant-picker{width:100%;min-width:0}
 }
+
+
+/* Yak Ops-inspired shell ownership: one page title, actions, then content.
+   Preserve DataGuard colors/components rather than importing Yak's styles. */
+.app-root .workspace {padding-top:64px}
+.app-root .workspace-head{height:34px;margin-bottom:10px;gap:12px}
+.app-root .workspace-head h1{font-size:18px;line-height:26px;flex:none}
+.app-root .workspace-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;min-height:32px;margin-left:auto}
+.app-root #workspace-actions{display:flex;align-items:center;gap:8px}
+.app-root .workspace-actions .ant-btn{
+ height:32px;min-height:32px;padding:0 12px;display:inline-flex;align-items:center;
+ justify-content:center;gap:6px;line-height:1;vertical-align:middle;
+}
+.app-root .workspace-actions .ant-btn .anticon{display:inline-flex;align-items:center;justify-content:center}
+.app-root .workspace>.panel{border-radius:6px}
+.app-root .workspace>.panel>.toolbar{min-height:46px;padding:8px 13px}
+.app-root .workspace>.panel>.toolbar .ant-select-selector,
+.app-root .workspace>.panel>.toolbar .ant-input-affix-wrapper,
+.app-root .workspace>.panel>.toolbar .ant-picker{height:32px;min-height:32px;align-items:center}
+.app-root .workspace>.panel>.toolbar .ant-select-selection-item{line-height:30px}
+.app-root .panel-head{min-height:42px;padding:7px 14px}
+.app-root .panel-head .ant-btn{height:30px;display:inline-flex;align-items:center;justify-content:center}
+.app-root .detail-page>.detail-content{padding-top:14px}
+.app-root .record-filters .search{min-width:185px}
+@media(max-width:760px){
+ .app-root .workspace{padding-top:63px}
+ .app-root .workspace-head{height:auto;min-height:34px;flex-wrap:wrap;margin-bottom:9px}
+ .app-root .workspace-actions{max-width:100%;margin-left:auto}
+ .app-root .workspace-actions .ant-btn{height:30px;min-height:30px;padding:0 9px}
+ .app-root .workspace>.panel>.toolbar{padding:8px 11px}
+}

@@ -60,8 +60,12 @@ test.beforeEach(async ({page})=>{
     const all=[...requests,...Array.from({length:21},(_,i)=>({
       ...requests[1],id:'history-'+String(i+1),createdAt:'2026-10-25T08:00:00'
     }))];
+    const status=url.searchParams.get('status');
+    const candidates=status==='DENIED_OR_REJECTED'?
+      all.filter(r=>r.status==='DENIED'||r.status==='REJECTED') :
+      status?all.filter(r=>r.status===status):all;
     const p=Math.max(1,Number(url.searchParams.get('page')||1));
-    data={page:p,pageSize:10,total:all.length,items:all.slice((p-1)*10,p*10)};
+    data={page:p,pageSize:10,total:candidates.length,items:candidates.slice((p-1)*10,p*10)};
   }
   else if(path.startsWith('/api/requests/')&&route.request().method()==='GET'){
     const id=path.split('/').pop();
@@ -71,6 +75,15 @@ test.beforeEach(async ({page})=>{
     const scope=url.searchParams.get('scope');
     data=scope==='pending'?requests.filter(r=>r.status==='PENDING'):scope==='handled'?requests.filter(r=>r.status!=='PENDING'):requests;
   }
+  else if(path==='/api/notifications')data={unread:2,items:[
+    {id:1,eventType:'PENDING',content:'待读取审批：orders',readAt:null,requestId:'q1'}
+  ]};
+  else if(path==='/api/ops/overview')data={
+    totalAgents:3,totalSources:2,pendingApprovals:1,readsLast24h:10,
+    failedLast24h:2,mcpErrorsLast24h:1,loginLockedAccounts:0
+  };
+  else if(path==='/api/agents/a1/check')data={ready:true,agentActive:true,authorizedColumns:3};
+  else if(path==='/api/sources/s1/test')data={ok:true,latencyMs:9};
   else if(path==='/api/audit')data=[];
   else if(route.request().method()!=='GET')data={updated:true,status:'APPROVED'};
   await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(data)});
@@ -188,4 +201,36 @@ test('dashboard 查看 opens the exact record page and back restores list',async
  await page.getByRole('button',{name:'返回访问记录'}).click();
  await expect(page.locator('.workspace-head h1')).toHaveText('访问记录');
  await expect(page.locator('.detail-page')).toHaveCount(0);
+});
+
+test('dashboard cards carry the correct filters to destination lists',async({page})=>{
+ await page.locator('.metric').filter({hasText:'已拒绝'}).click();
+ await expect(page.locator('.workspace-head h1')).toHaveText('访问记录');
+ await expect(page.locator('.record-filters .ant-select').first()).toContainText('已拒绝');
+ await expect(page.locator('.ant-table-tbody')).toContainText('报表 Agent');
+ await expect(page.locator('.ant-table-tbody')).not.toContainText('客服 Agent');
+ await navigate(page,'工作台');
+ await page.locator('.metric').filter({hasText:'成功率'}).click();
+ await expect(page.locator('.record-filters .ant-select').first()).toContainText('成功');
+ await navigate(page,'工作台');
+ await page.locator('.metric').filter({hasText:'待审批'}).click();
+ await expect(page.locator('.workspace-head h1')).toHaveText('审批中心');
+ await expect(page.getByRole('radio',{name:'待我审批'})).toBeChecked();
+});
+
+test('page header is single-level with centered actions and no duplicate list headers',async({page})=>{
+ await expect(page.locator('.console-breadcrumb')).toHaveText('首页');
+ await navigate(page,'数据源');
+ await expect(page.locator('.workspace>.panel>.panel-head')).toHaveCount(0);
+ const create=page.getByRole('button',{name:'新增数据源'});
+ const refresh=page.getByRole('button',{name:'刷新'});
+ await expect(create).toBeVisible();
+ const first=await create.boundingBox(),second=await refresh.boundingBox();
+ expect(Math.abs((first!.y+first!.height/2)-(second!.y+second!.height/2))).toBeLessThanOrEqual(2);
+ await navigate(page,'Agent 管理');
+ await expect(page.locator('.workspace>.panel>.panel-head')).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'新建 Agent'})).toBeVisible();
+ await navigate(page,'访问记录');
+ await expect(page.locator('.workspace>.panel>.panel-head')).toHaveCount(0);
+ await expect(page.locator('.record-filters')).toBeVisible();
 });

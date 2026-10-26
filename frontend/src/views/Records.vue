@@ -2,9 +2,9 @@
 import {computed,onMounted,ref,watch} from 'vue';
 import {api,stamp,fail,stateName,stateColor,type DataRow} from '../api';
 
-const props=defineProps<{initialRecordId?:string|null}>();
+const props=defineProps<{initialRecordId?:string|null;initialStatus?:string}>();
 const emit=defineEmits<{closeDetail:[]}>();
-const rows=ref<DataRow[]>([]),search=ref(''),status=ref('all'),agent=ref('all'),source=ref('all'),
+const rows=ref<DataRow[]>([]),search=ref(''),status=ref(props.initialStatus||'all'),agent=ref('all'),source=ref('all'),
  date=ref<[string,string]|null>(null),detail=ref<DataRow|null>(null),busy=ref(false),
  currentPage=ref(1),total=ref(0),detailBusy=ref(false);
 const agents=computed(()=>[...new Set(rows.value.map(r=>r.agentName))].filter(Boolean));
@@ -36,12 +36,13 @@ async function openRecord(id:string){
 function closeRecord(){detail.value=null;emit('closeDetail');}
 watch([search,status,agent,source,date],()=>{currentPage.value=1;void refresh()});
 watch(()=>props.initialRecordId,id=>{if(id)void openRecord(id);else detail.value=null});
+watch(()=>props.initialStatus,next=>{status.value=next||'all';currentPage.value=1;});
 onMounted(()=>{void refresh();if(props.initialRecordId)void openRecord(props.initialRecordId)});
 defineExpose({refresh});
 </script>
 <template>
 <section v-if="detail||detailBusy" class="panel detail-page" aria-label="访问详情页面">
- <div class="panel-head"><h2>访问详情</h2><a-button @click="closeRecord">返回访问记录</a-button></div>
+ <teleport to="#workspace-actions"><a-button @click="closeRecord">返回访问记录</a-button></teleport>
  <a-spin :spinning="detailBusy">
   <div v-if="detail" class="detail-content">
    <div class="drawer-heading"><strong>{{detail.tableName}} · 访问记录</strong><a-tag :color="stateColor(detail.status)">{{stateName[detail.status]||detail.status}}</a-tag></div>
@@ -66,9 +67,8 @@ defineExpose({refresh});
  </a-spin>
 </section>
 <section v-else class="panel">
- <div class="panel-head"><h2>访问记录</h2><span class="subtle">共 {{total}} 条</span></div>
  <div class="toolbar record-filters">
-  <a-select v-model:value="status" style="width:135px" :options="[{value:'all',label:'全部状态'},...Object.entries(stateName).map(([value,label])=>({value,label}))]"/>
+  <a-select v-model:value="status" style="width:135px" :options="[{value:'all',label:'全部状态'},{value:'DENIED_OR_REJECTED',label:'已拒绝（含审批拒绝）'},...Object.entries(stateName).map(([value,label])=>({value,label}))]"/>
   <a-select v-model:value="agent" style="width:140px" :options="[{value:'all',label:'全部 Agent'},...agents.map(v=>({value:v,label:v}))]"/>
   <a-select v-model:value="source" style="width:150px" :options="[{value:'all',label:'全部数据源'},...sources.map(v=>({value:v,label:v}))]"/>
   <a-range-picker :value="date" format="YYYY-MM-DD" value-format="YYYY-MM-DD" :placeholder="['开始日期','结束日期']" @change="onRangeChange"/>

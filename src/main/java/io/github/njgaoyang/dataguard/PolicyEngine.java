@@ -255,13 +255,14 @@ class ControlApi {
    @RequestParam(defaultValue="") String to){
   if(page<1||page>100000||search.length()>120||agent.length()>160||source.length()>160)
    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid pagination or filters");
-  if(!status.isBlank()&&!Set.of("SUCCESS","PENDING","APPROVED","DENIED","REJECTED","FAILED","EXECUTING","EXPIRED").contains(status))
+  if(!status.isBlank()&&!Set.of("SUCCESS","PENDING","APPROVED","DENIED","REJECTED","DENIED_OR_REJECTED","FAILED","EXECUTING","EXPIRED").contains(status))
    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid status");
   String conditions=" WHERE 1=1";
   List<Object> params=new ArrayList<>();
   boolean admin=auth.getAuthorities().stream().anyMatch(a->a.getAuthority().equals("ROLE_ADMIN"));
   if(!admin){conditions+=" AND (owner.username=? OR reviewer.username=?)";params.add(auth.getName());params.add(auth.getName());}
-  if(!status.isBlank()){conditions+=" AND q.status=?";params.add(status);}
+  if("DENIED_OR_REJECTED".equals(status))conditions+=" AND q.status IN ('DENIED','REJECTED')";
+  else if(!status.isBlank()){conditions+=" AND q.status=?";params.add(status);}
   if(!agent.isBlank()){conditions+=" AND a.name=?";params.add(agent);}
   if(!source.isBlank()){conditions+=" AND s.name=?";params.add(source);}
   if(!search.isBlank()){
