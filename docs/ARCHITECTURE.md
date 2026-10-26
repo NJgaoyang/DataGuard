@@ -16,7 +16,7 @@
 
 ## 数据库设计
 
-Flyway V1 创建 9 张核心表和 1 张审计表：dg_users、dg_sources、dg_source_tables、dg_source_columns、dg_agents、dg_agent_tables、dg_agent_columns、dg_rules、dg_requests、dg_audit。
+Flyway V1 创建 9 张核心表和 1 张审计表，V2 更新规则与脱敏结构，V3 增加登录失败锁定、Agent 分钟级限额和审批通知表。核心业务表：dg_users、dg_sources、dg_source_tables、dg_source_columns、dg_agents、dg_agent_tables、dg_agent_columns、dg_rules、dg_requests、dg_audit。
 
 所有数据库密码经 AES-256-GCM 加密后保存；Agent Token 只保存 SHA256 摘要。运维必须在独立的安全配置中维护 DG_ENCRYPTION_KEY，不能提交仓库。
 
@@ -30,3 +30,6 @@ Flyway V1 创建 9 张核心表和 1 张审计表：dg_users、dg_sources、dg_s
 - 禁止申请人自审；审批通过不代表突破数据库权限或白名单。
 - MCP 只支持 JSON response 模式的 Streamable HTTP 2025 协议；不宣称支持 SSE/现代协议扩展。
 - 2026-10-26 已完成开发机 HTTPS 公网登录及 MySQL/StarRocks 隔离演示库的实际 JDBC、MCP 人工审批和审计验收；详细结果见 [P0 实机验收](P0_LIVE_ACCEPTANCE.md)。生产数据源、外部第三方 MCP SDK、故障及压力演练仍未认证。
+## 开发机运维和正式上线准入
+
+开发机实测、发布与回滚操作、监控指标及仍需的生产验收，请参阅 [安全与发布验收](OPERATIONS_ACCEPTANCE_2026-10-26.md)。
