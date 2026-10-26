@@ -54,7 +54,7 @@ onMounted(()=>void refresh());defineExpose({refresh});
  <a-descriptions-item label="动作">{{labels[selected.action]}}</a-descriptions-item>
  <a-descriptions-item v-if="selected.action==='APPROVAL'" label="审批人">{{selected.approverName}}</a-descriptions-item>
  </a-descriptions>
- <div class="drawer-actions"><a-button type="primary" @click="selected&&edit(selected)">编辑规则</a-button><a-button :danger="selected?.enabled" @click="selected&&confirm('确认变更规则状态？',toggleSelected)">{{selected?.enabled?'停用规则':'启用规则'}}</a-button></div></div>
+ </div>
 </section>
  <a-modal v-model:open="createOpen" :title="editId?'编辑访问规则':'新建访问规则'" :ok-text="editId?'保存修改':'创建规则'" :confirm-loading="busy" :width="610" @ok="save">
  <a-form layout="vertical"><a-form-item label="规则名称" required><a-input v-model:value="form.name"/></a-form-item>

@@ -3,7 +3,7 @@ import {computed,onMounted,ref,watch} from 'vue';
 import {api,stamp,match,page,fail,confirm,type DataRow,type User} from '../api';
 const props=defineProps<{user:User}>();
 const rows=ref<DataRow[]>([]),sources=ref<DataRow[]>([]),users=ref<DataRow[]>([]),selected=ref<DataRow|null>(null),search=ref(''),tab=ref('grants'),secret=ref(''),createOpen=ref(false),form=ref({name:'',ownerId:'',validDays:30}),grants=ref<DataRow>({tables:[],columns:[]}),
- sourceId=ref(''),tableName=ref(''),columnName=ref(''),expiry=ref(30),testResult=ref<DataRow|null>(null),testBusy=ref(false),rotationDays=ref(30),usage=ref<DataRow>({stats:{},recent:[]}),editingGrants=ref(false),expandedSources=ref<string[]>([]),grantSource=ref(''),selectedGrantTable=ref(''),grantSearch=ref('');
+ sourceId=ref(''),tableName=ref(''),columnName=ref(''),expiry=ref(30),testResult=ref<DataRow|null>(null),testBusy=ref(false),rotationDays=ref(30),usage=ref<DataRow>({stats:{},recent:[]}),editingGrants=ref(false),viewMode=ref<'view'|'edit'>('view'),expandedSources=ref<string[]>([]),grantSource=ref(''),selectedGrantTable=ref(''),grantSearch=ref('');
 const mcpEndpoint=window.location.origin+'/mcp';
 const filtered=computed(()=>rows.value.filter(r=>match(r,search.value,['name','ownerName'])));
 const sourceName=(id:string)=>sources.value.find(s=>s.id===id)?.name||'数据源';
@@ -14,7 +14,7 @@ const activeGrantRow=computed(()=>activeGrantGroup.value?.tables.find(x=>x.table
 const columnsFor=(r:DataRow)=>(grants.value.columns||[]).filter((c:DataRow)=>c.sourceId===r.sourceId&&c.tableName===r.tableName);
 const status=(r:DataRow)=>r.revokedAt||!r.enabled?'已停用':new Date(r.expiresAt).getTime()<Date.now()?'已过期':'正常';
 async function refresh(){try{rows.value=await api('/api/agents')}catch(e){fail(e)}}
-async function open(row:DataRow){selected.value=row;tab.value='grants';editingGrants.value=false;expandedSources.value=[];grantSource.value='';selectedGrantTable.value='';grantSearch.value='';usage.value={stats:{},recent:[]};try{grants.value=await api('/api/agents/'+row.id+'/grants');if(props.user.roleCode==='ADMIN')sources.value=await api('/api/sources')}catch(e){fail(e)}}
+async function open(row:DataRow,mode:'view'|'edit'='view'){viewMode.value=mode;selected.value=row;tab.value='grants';editingGrants.value=mode==='edit'&&props.user.roleCode==='ADMIN';expandedSources.value=[];grantSource.value='';selectedGrantTable.value='';grantSearch.value='';usage.value={stats:{},recent:[]};try{grants.value=await api('/api/agents/'+row.id+'/grants');if(props.user.roleCode==='ADMIN')sources.value=await api('/api/sources')}catch(e){fail(e)}}
 async function testAgent(){if(!selected.value)return;try{testBusy.value=true;testResult.value=await api('/api/agents/'+selected.value.id+'/check')}catch(e){fail(e)}finally{testBusy.value=false}}
 async function rotate(){if(!selected.value)return;const id=selected.value.id;try{
  const updated=await api<DataRow>('/api/agents/'+id+'/rotate','POST',{validDays:rotationDays.value});
@@ -38,11 +38,11 @@ onMounted(()=>void refresh());defineExpose({refresh});
 <section v-if="!selected" class="panel">
  <div class="toolbar"><a-button type="primary" @click="openCreate">＋ 新建 Agent</a-button><a-input-search v-model:value="search" class="search" allow-clear placeholder="搜索 Agent 名称或所属用户"/><a-button class="toolbar-refresh" @click="refresh">刷新</a-button></div>
  <a-table :data-source="filtered" :pagination="page" row-key="id" :scroll="{x:770}">
- <a-table-column title="Agent 名称"><template #default="{record}"><a-button type="link" class="name-link" @click="open(record)">♧ {{record.name}}</a-button></template></a-table-column>
+ <a-table-column title="Agent 名称"><template #default="{record}"><a-button type="link" class="name-link" @click="open(record,'view')">♧ {{record.name}}</a-button></template></a-table-column>
  <a-table-column title="所属用户" data-index="ownerName"/>
  <a-table-column title="状态"><template #default="{record}"><a-tag :color="status(record)==='正常'?'green':'red'">{{status(record)}}</a-tag></template></a-table-column>
  <a-table-column title="最近访问"><template #default="{record}">{{stamp(record.lastAccess)}}</template></a-table-column>
- <a-table-column title="操作" :width="185"><template #default="{record}"><a-space size="small"><a-button type="link" @click="open(record)">查看</a-button><a-button v-if="user.roleCode==='ADMIN'" type="link" :disabled="!!record.revokedAt||!record.enabled" danger @click="confirm('确认撤销 Agent？Token 将立即失效且无法恢复。',()=>revokeAgent(record))">撤销</a-button></a-space></template></a-table-column>
+ <a-table-column title="操作" :width="235"><template #default="{record}"><a-space size="small"><a-button type="link" @click="open(record,'view')">查看</a-button><a-button v-if="user.roleCode==='ADMIN'" type="link" @click="open(record,'edit')">编辑</a-button><a-button v-if="user.roleCode==='ADMIN'" type="link" :disabled="!!record.revokedAt||!record.enabled" danger @click="confirm('确认撤销 Agent？Token 将立即失效且无法恢复。',()=>revokeAgent(record))">撤销</a-button></a-space></template></a-table-column>
  </a-table></section>
  <section v-else class="panel detail-page" aria-label="Agent 详情页面">
  <teleport to="#workspace-actions"><a-button @click="selected=null">返回 Agent 列表</a-button></teleport>
@@ -57,9 +57,9 @@ onMounted(()=>void refresh());defineExpose({refresh});
     </a-descriptions>
     <div class="drawer-actions" style="align-items:center;flex-wrap:wrap">
      <a-button :loading="testBusy" @click="testAgent">接入检测</a-button>
-     <a-input-number v-model:value="rotationDays" :min="1" :max="90" :step="1" style="width:90px"/>
-     <a-button @click="confirm('令牌轮换后，原 Token 会立即失效，确认？',rotate)">轮换 Token</a-button>
-     <a-button danger @click="confirm('撤销后令牌立即失效，确认？',revoke)">撤销 Agent</a-button>
+     <a-input-number v-if="viewMode==='edit'" v-model:value="rotationDays" :min="1" :max="90" :step="1" style="width:90px"/>
+     <a-button v-if="viewMode==='edit'" @click="confirm('令牌轮换后，原 Token 会立即失效，确认？',rotate)">轮换 Token</a-button>
+     <a-button v-if="viewMode==='edit'" danger @click="confirm('撤销后令牌立即失效，确认？',revoke)">撤销 Agent</a-button>
     </div>
     <a-alert v-if="testResult" :type="testResult.ready?'success':'warning'" show-icon
       :message="testResult.ready?'Agent 授权就绪':'Agent 尚未满足接入条件'"
@@ -82,9 +82,9 @@ onMounted(()=>void refresh());defineExpose({refresh});
      </div>
      <div class="grant-limit">
       <span>最大读取行数</span><strong>200 行</strong>
-      <a-button v-if="user.roleCode==='ADMIN'" size="small" @click="editingGrants=!editingGrants">{{editingGrants?'完成编辑':'编辑授权'}}</a-button>
+      <a-button v-if="user.roleCode==='ADMIN'&&viewMode==='edit'" size="small" @click="editingGrants=!editingGrants">{{editingGrants?'完成编辑':'编辑授权'}}</a-button>
      </div>
-     <a-form v-if="user.roleCode==='ADMIN'&&editingGrants" class="grant-editor" layout="vertical">
+     <a-form v-if="user.roleCode==='ADMIN'&&viewMode==='edit'&&editingGrants" class="grant-editor" layout="vertical">
       <a-form-item label="数据源"><a-select v-model:value="sourceId" placeholder="选择已配置的数据源" :options="sources.map(s=>({value:s.id,label:s.name}))"/></a-form-item>
       <a-form-item label="表名"><a-input v-model:value="tableName" placeholder="先配置平台表白名单"/></a-form-item>
       <a-button @click="grantTable">授权该表</a-button>

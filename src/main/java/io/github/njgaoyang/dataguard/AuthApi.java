@@ -120,6 +120,15 @@ class AuthApi {
   audit.log(auth.getName(),"USER_CREATED",null,id,"SUCCESS","");
   return Map.of("id",id);
  }
+ record UserUpdate(String displayName,String roleCode){}
+ @PutMapping("/api/users/{id}") Map<String,Object> updateUser(Authentication auth,@PathVariable String id,@RequestBody UserUpdate in){
+  Guard.admin(auth);String safe=Guard.id(id);
+  if(in==null)throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid user");
+  String display=Guard.required(in.displayName(),100),role=Guard.role(in.roleCode());
+  int updated=db.update("UPDATE dg_users SET display_name=?,role_code=? WHERE id=? AND username<>'admin' AND username<>?",display,role,safe,auth.getName());
+  if(updated!=1)throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Cannot edit protected user");
+  audit.log(auth.getName(),"USER_UPDATED",null,safe,"SUCCESS","Profile and role updated");return Map.of("updated",true);
+ }
  @PostMapping("/api/users/{id}/toggle") Map<String,Object> toggle(Authentication auth,@PathVariable String id){
   Guard.admin(auth);String safe=Guard.id(id);
   int n=db.update("UPDATE dg_users SET enabled=NOT enabled WHERE id=? AND username<>'admin' AND username<>?",safe,auth.getName());
