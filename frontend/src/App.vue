@@ -150,7 +150,10 @@ onMounted(()=>{if(route.name==='record-detail'){recordId.value=String(route.para
   </aside>
   <header class="topbar">
    <button class="mobile-toggle" @click="menuOpen=!menuOpen" aria-label="打开导航"><MenuOutlined/></button>
-   <!-- Global bar: account and alerts only. The page title is owned by the content header. -->
+   <nav class="topbar-page" aria-label="当前位置">
+    <template v-if="detailOpen"><button class="breadcrumb-parent" @click="navigate(page)">{{sectionTitle}}</button><span class="crumb-divider">/</span><strong>{{detailTitle}}</strong></template>
+    <strong v-else>{{sectionTitle}}</strong>
+   </nav>
    <div class="topbar-actions">
     <a-dropdown :trigger="['click']" placement="bottomRight">
      <a-badge :count="unread" :overflow-count="99" size="small">
@@ -176,15 +179,8 @@ onMounted(()=>{if(route.name==='record-detail'){recordId.value=String(route.para
    </div>
   </header>
   <main class="workspace">
-   <div class="workspace-head">
-    <nav v-if="detailOpen" class="page-breadcrumb" aria-label="页面路径">
-     <button class="breadcrumb-parent" @click="navigate(page)">{{sectionTitle}}</button>
-     <span class="crumb-divider" aria-hidden="true">/</span>
-     <h1>{{detailTitle}}</h1>
-    </nav>
-    <h1 v-else>{{sectionTitle}}</h1>
-    <div class="workspace-actions"><div id="workspace-actions"></div><a-button class="refresh-action" @click="refresh"><ReloadOutlined/> 刷新</a-button></div>
-   </div>
+   <div class="workspace-head" v-if="detailOpen"><div class="workspace-actions"><div id="workspace-actions"></div><a-button class="refresh-action" @click="refresh"><ReloadOutlined/> 刷新</a-button></div></div>
+   <div class="workspace-list-actions" v-else><div id="workspace-actions"></div><a-button class="refresh-action" @click="refresh"><ReloadOutlined/> 刷新</a-button></div>
    <Dashboard v-if="page==='dashboard'" :key="'dashboard'+reloadKey" @navigate="navigate" @open-record="openRecord"/>
    <Sources v-else-if="page==='sources'&&admin" :key="'sources'+reloadKey" @detail-change="onDetailChange"/>
    <Agents v-else-if="page==='agents'" :key="'agents'+reloadKey" :user="user" @detail-change="onDetailChange"/>

@@ -2,10 +2,21 @@
 import {computed,onMounted,ref,watch} from 'vue';
 import {api,stamp,match,page,fail,stateName,stateColor,type DataRow,type User} from '../api';
 const props=defineProps<{user:User;initialScope?:string}>();
-const tab=ref(props.initialScope||(props.user.roleCode==='READER'?'mine':'pending')),rows=ref<DataRow[]>([]),search=ref(''),detail=ref<DataRow|null>(null),reason=ref(''),busy=ref(false),requestHelpOpen=ref(false);
+const tab=ref(props.initialScope||(props.user.roleCode==='READER'?'mine':'pending')),rows=ref<DataRow[]>([]),search=ref(''),detail=ref<DataRow|null>(null),reason=ref(''),busy=ref(false),requestHelpOpen=ref(false),preapplyBusy=ref(false),preapplyAgents=ref<DataRow[]>([]),preapplySources=ref<DataRow[]>([]),preapplyForm=ref({agentId:'',sourceId:'',tableName:'',columns:'',requestedRows:50});
 const filtered=computed(()=>rows.value.filter(r=>match(r,search.value,['id','requesterName','agentName','tableName','sourceName'])));
 const canApprove=computed(()=>detail.value?.status==='PENDING'&&detail.value.approverUsername===props.user.username
  &&detail.value.ownerUsername!==props.user.username&&new Date(detail.value.expiresAt).getTime()>Date.now());
+async function openPreapply(){try{
+ [preapplyAgents.value,preapplySources.value]=await Promise.all([api('/api/agents'),api('/api/sources')]);
+ requestHelpOpen.value=true;
+}catch(e){fail(e)}}
+async function submitPreapply(){try{
+ preapplyBusy.value=true;
+ const parts=preapplyForm.value.columns.split(',').map(x=>x.trim()).filter(Boolean);
+ const result=await api<{id:string}>('/api/requests/preapply','POST',{...preapplyForm.value,columns:parts});
+ requestHelpOpen.value=false;selectTab('mine');
+ const record=await api<DataRow>('/api/requests/'+result.id);detail.value=record;
+}catch(e){fail(e)}finally{preapplyBusy.value=false}}
 async function refresh(){try{rows.value=await api('/api/requests?scope='+tab.value)}catch(e){fail(e)}}
 function selectTab(t:string){tab.value=t;detail.value=null;void refresh()}
 async function decide(action:'approve'|'reject'){if(!detail.value)return;try{if(!reason.value.trim())throw Error('必须填写审批意见');busy.value=true;
@@ -18,7 +29,7 @@ onMounted(()=>void refresh());defineExpose({refresh});
 <template>
 <section v-if="!detail" class="panel">
  <div class="toolbar stack">
- <a-button type="primary" @click="requestHelpOpen=true">＋ 发起访问申请</a-button>
+ <a-button type="primary" @click="openPreapply">＋ 发起访问申请</a-button>
  <a-radio-group :value="tab" button-style="solid" @change="selectTab($event.target.value)">
   <a-radio-button v-if="user.roleCode!=='READER'" value="pending">待我审批</a-radio-button>
   <a-radio-button value="mine">我发起的</a-radio-button>
@@ -64,9 +75,14 @@ onMounted(()=>void refresh());defineExpose({refresh});
  </template>
 </div>
 </section>
-  <a-modal v-model:open="requestHelpOpen" title="发起访问申请" :footer="null">
- <p>访问申请由 Agent 发起：当 Agent 通过 MCP 读取已授权的数据表，且命中“需要审批”的访问规则时，系统会自动生成申请。</p>
- <p>请先在「Agent 管理」完成 Agent 和数据表授权，再在「访问规则」配置审批策略。创建申请后，在「我发起的」查看进度。</p>
- <a-button type="primary" @click="requestHelpOpen=false">知道了</a-button>
-</a-modal>
+ <a-modal v-model:open="requestHelpOpen" title="提前申请访问审批" ok-text="提交申请" :confirm-loading="preapplyBusy" @ok="submitPreapply">
+  <a-form layout="vertical">
+   <a-form-item label="Agent" required><a-select v-model:value="preapplyForm.agentId" placeholder="选择本人 Agent" :options="preapplyAgents.map(x=>({value:x.id,label:x.name}))"/></a-form-item>
+   <a-form-item label="数据源" required><a-select v-model:value="preapplyForm.sourceId" placeholder="选择数据源" :options="preapplySources.map(x=>({value:x.id,label:x.name}))"/></a-form-item>
+   <a-form-item label="数据表" required><a-input v-model:value="preapplyForm.tableName" placeholder="输入已授权的表名"/></a-form-item>
+   <a-form-item label="读取字段（逗号分隔）" required><a-input v-model:value="preapplyForm.columns" placeholder="例如 id,name；顺序须与实际读取一致"/></a-form-item>
+   <a-form-item label="最大读取行数" required><a-input-number v-model:value="preapplyForm.requestedRows" :min="1" :max="200"/></a-form-item>
+  </a-form>
+  <p class="subtle">必须命中“需要审批”的访问规则。通过后，仅允许同一 Agent 在 24 小时内按相同字段顺序、行数及无筛选排序参数执行一次。不会在申请时执行 SQL。</p>
+ </a-modal>
 </template>

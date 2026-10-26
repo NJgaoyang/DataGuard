@@ -368,3 +368,14 @@
   height:0!important;min-height:0!important;border:0!important;
   padding:0!important;line-height:0!important;
 }
+
+/* Single title in the global header. List action rows own their controls. */
+.app-root .topbar{justify-content:space-between!important}
+.app-root .topbar-page{display:flex;align-items:center;gap:9px;min-width:0;margin-right:auto;font-size:14px;color:#203147}
+.app-root .topbar-page strong{font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.app-root .topbar-page .breadcrumb-parent{border:0;background:transparent;color:#728198;padding:2px 0;font-size:13px}
+.app-root .topbar-page .crumb-divider{color:#adbacb}
+.app-root .workspace-list-actions{display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-bottom:10px;min-height:32px}
+.app-root .workspace-list-actions #workspace-actions{display:flex;gap:8px}
+.app-root .workspace-list-actions .ant-btn{height:32px;display:inline-flex;align-items:center;justify-content:center}
+.app-root .toolbar > .ant-btn-primary{margin-left:auto;order:20}
