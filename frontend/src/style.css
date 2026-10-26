@@ -379,3 +379,10 @@
 .app-root .workspace-list-actions #workspace-actions{display:flex;gap:8px}
 .app-root .workspace-list-actions .ant-btn{height:32px;display:inline-flex;align-items:center;justify-content:center}
 .app-root .toolbar > .ant-btn-primary{margin-left:auto;order:20}
+
+/* List actions stay inside each table toolbar; no spacer above dashboard KPIs. */
+.app-root .workspace > .metric-grid:first-child{margin-top:0}
+.app-root .toolbar > .toolbar-refresh{margin-left:0;order:21;white-space:nowrap}
+.app-root .toolbar > .ant-btn-primary{margin-left:auto;order:20}
+.app-root .toolbar > .ant-input-search{order:0}
+.app-root .toolbar.record-filters > .toolbar-refresh{margin-left:auto}

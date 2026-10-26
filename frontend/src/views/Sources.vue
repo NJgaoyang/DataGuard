@@ -48,7 +48,7 @@ onMounted(()=>void refresh());defineExpose({refresh});
 </script>
 <template>
 <section v-if="!selected" class="panel">
- <div class="toolbar"><a-button type="primary" @click="create">＋ 新增数据源</a-button><a-input-search class="search" v-model:value="search" allow-clear placeholder="搜索数据库名称、类型或主机"/></div>
+ <div class="toolbar"><a-button type="primary" @click="create">＋ 新增数据源</a-button><a-input-search class="search" v-model:value="search" allow-clear placeholder="搜索数据库名称、类型或主机"/><a-button class="toolbar-refresh" @click="refresh">刷新</a-button></div>
  <a-table :data-source="filtered" row-key="id" :pagination="page" :scroll="{x:740}">
   <a-table-column title="名称"><template #default="{record}"><a-button type="link" class="name-link" @click="open(record)">{{record.name}}</a-button></template></a-table-column>
   <a-table-column title="类型" data-index="type"/>

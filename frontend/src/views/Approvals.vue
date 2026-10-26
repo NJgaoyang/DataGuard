@@ -36,6 +36,7 @@ onMounted(()=>void refresh());defineExpose({refresh});
   <a-radio-button v-if="user.roleCode!=='READER'" value="handled">已处理</a-radio-button>
  </a-radio-group>
  <a-input-search v-model:value="search" class="search" allow-clear placeholder="搜索申请内容、Agent 或表名"/>
+ <a-button class="toolbar-refresh" @click="refresh">刷新</a-button>
  </div>
  <a-table :data-source="filtered" :pagination="page" row-key="id" :scroll="{x:850}">
   <a-table-column title="申请时间"><template #default="{record}">{{stamp(record.createdAt)}}</template></a-table-column>

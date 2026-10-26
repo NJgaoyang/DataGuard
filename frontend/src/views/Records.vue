@@ -74,6 +74,7 @@ defineExpose({refresh});
   <a-select v-model:value="source" style="width:150px" :options="[{value:'all',label:'全部数据源'},...sources.map(v=>({value:v,label:v}))]"/>
   <a-range-picker :value="date" format="YYYY-MM-DD" value-format="YYYY-MM-DD" :placeholder="['开始日期','结束日期']" @change="onRangeChange"/>
   <a-input-search v-model:value="search" allow-clear class="search" placeholder="搜索数据表或请求编号"/>
+ <a-button class="toolbar-refresh" @click="refresh">刷新</a-button>
  </div>
  <a-table :data-source="rows" :loading="busy" row-key="id" :pagination="pagination" :scroll="{x:1050}" @change="changePage">
   <a-table-column title="序号" :width="65"><template #default="{index}">{{(currentPage-1)*10+index+1}}</template></a-table-column>

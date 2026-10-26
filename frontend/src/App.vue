@@ -180,7 +180,6 @@ onMounted(()=>{if(route.name==='record-detail'){recordId.value=String(route.para
   </header>
   <main class="workspace">
    <div class="workspace-head" v-if="detailOpen"><div class="workspace-actions"><div id="workspace-actions"></div><a-button class="refresh-action" @click="refresh"><ReloadOutlined/> 刷新</a-button></div></div>
-   <div class="workspace-list-actions" v-else><div id="workspace-actions"></div><a-button class="refresh-action" @click="refresh"><ReloadOutlined/> 刷新</a-button></div>
    <Dashboard v-if="page==='dashboard'" :key="'dashboard'+reloadKey" @navigate="navigate" @open-record="openRecord"/>
    <Sources v-else-if="page==='sources'&&admin" :key="'sources'+reloadKey" @detail-change="onDetailChange"/>
    <Agents v-else-if="page==='agents'" :key="'agents'+reloadKey" :user="user" @detail-change="onDetailChange"/>

@@ -31,7 +31,7 @@ onMounted(()=>void refresh());defineExpose({refresh});
 </script>
 <template>
 <section v-if="!selected" class="panel">
- <div class="toolbar"><a-button type="primary" @click="openCreate">＋ 新建 Agent</a-button><a-input-search v-model:value="search" class="search" allow-clear placeholder="搜索 Agent 名称或所属用户"/></div>
+ <div class="toolbar"><a-button type="primary" @click="openCreate">＋ 新建 Agent</a-button><a-input-search v-model:value="search" class="search" allow-clear placeholder="搜索 Agent 名称或所属用户"/><a-button class="toolbar-refresh" @click="refresh">刷新</a-button></div>
  <a-table :data-source="filtered" :pagination="page" row-key="id" :scroll="{x:770}">
  <a-table-column title="Agent 名称"><template #default="{record}"><a-button type="link" class="name-link" @click="open(record)">♧ {{record.name}}</a-button></template></a-table-column>
  <a-table-column title="所属用户" data-index="ownerName"/>

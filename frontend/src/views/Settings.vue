@@ -31,8 +31,8 @@ onMounted(()=>void refresh());defineExpose({refresh});
    <a-descriptions-item label="锁定账户">{{ops.loginLockedAccounts}}</a-descriptions-item>
   </a-descriptions></section></a-tab-pane>
  <a-tab-pane v-if="user.roleCode==='ADMIN'" key="users" tab="用户管理"><section class="panel">
-   <div class="panel-head"><h2>系统用户</h2><a-button type="primary" @click="form={username:'',displayName:'',roleCode:'READER',password:''};createOpen=true">＋ 新增用户</a-button></div>
-   <div class="toolbar"><a-input-search v-model:value="search" class="search" allow-clear placeholder="搜索姓名或用户名"/></div>
+   <div class="panel-head"><h2>系统用户</h2></div>
+   <div class="toolbar"><a-input-search v-model:value="search" class="search" allow-clear placeholder="搜索姓名或用户名"/><a-button type="primary" @click="form={username:'',displayName:'',roleCode:'READER',password:''};createOpen=true">＋ 新增用户</a-button><a-button class="toolbar-refresh" @click="refresh">刷新</a-button></div>
    <a-table :data-source="filtered" row-key="id" :pagination="page" :scroll="{x:670}">
     <a-table-column title="姓名" data-index="displayName"/><a-table-column title="用户名" data-index="username"/>
     <a-table-column title="角色"><template #default="{record}">{{record.roleCode==='ADMIN'?'管理员':record.roleCode==='APPROVER'?'审批人':'普通用户'}}</template></a-table-column>
