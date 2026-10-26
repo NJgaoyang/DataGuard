@@ -57,22 +57,42 @@ onMounted(()=>void start());
 <template>
 <a-config-provider :theme="theme">
  <div v-if="!ready" class="app-loading"><a-spin size="large"/></div>
- <main v-else-if="!user" class="login-shell">
-  <div class="login-panel">
-   <div class="login-brand"><SecurityScanOutlined/> <strong>MCP DataGuard</strong></div>
-   <h1>登录管理平台</h1><p>AI 数据访问安全网关</p>
-   <a-alert v-if="error" :message="error" type="error" class="login-error"/>
-   <a-form layout="vertical" :model="loginModel" @finish="signin">
-    <a-form-item label="用户名" name="username" :rules="[{required:true,message:'请输入用户名'}]"><a-input v-model:value="loginModel.username" size="large" autofocus autocomplete="username"/></a-form-item>
-    <a-form-item label="密码" name="password" :rules="[{required:true,message:'请输入密码'}]"><a-input-password v-model:value="loginModel.password" size="large" autocomplete="current-password"/></a-form-item>
-    <a-button type="primary" block size="large" html-type="submit" :loading="loading">登录</a-button>
-   </a-form>
-  </div>
+ <main v-else-if="!user" class="auth-layout">
+  <section class="auth-brand-panel" aria-label="DataGuard 产品介绍">
+   <div class="auth-brand-top">
+    <img class="auth-brand-mark" src="/dataguard-mark.svg" alt="DataGuard" width="54" height="59"/>
+    <span class="auth-brand-copy"><strong class="brand-wordmark">Data<span>Guard</span></strong><small>数据守卫</small></span>
+   </div>
+   <div class="auth-brand-body">
+    <div class="auth-eyebrow">DATA ACCESS GOVERNANCE</div>
+    <h1>让每一次数据访问<br/>安全、可控、可追溯</h1>
+    <p>面向 Agent 与企业数据源的统一安全访问管理平台</p>
+    <div class="auth-capabilities">
+     <div class="auth-capability"><span class="capability-icon">01</span><div><strong>访问权限治理</strong><small>Agent 身份与数据源访问控制</small></div></div>
+     <div class="auth-capability"><span class="capability-icon">02</span><div><strong>SQL 安全防护</strong><small>读取权限校验与执行审计</small></div></div>
+     <div class="auth-capability"><span class="capability-icon">03</span><div><strong>读取授权审批</strong><small>数据表读取申请与审批记录</small></div></div>
+    </div>
+   </div>
+   <div class="auth-brand-foot">DataGuard 数据守卫</div>
+  </section>
+  <section class="auth-form-panel">
+   <div class="auth-login-card">
+    <div class="auth-login-heading"><h2>登录管理平台</h2><p>请输入管理员分配的账号和密码</p></div>
+    <form class="auth-form" @submit.prevent="signin">
+     <div class="field"><label for="login-username">账号</label><input id="login-username" name="username" v-model="loginModel.username" autocomplete="username" placeholder="请输入账号" required/></div>
+     <div class="field"><label for="login-password">密码</label><input id="login-password" name="password" type="password" v-model="loginModel.password" autocomplete="current-password" placeholder="请输入密码" required/></div>
+     <button class="auth-submit" type="submit" :disabled="loading">{{loading?'登录中…':'登录'}}</button>
+     <div class="auth-error" role="alert" aria-live="polite">{{error}}</div>
+    </form>
+    <p class="auth-support">如需开通账号或重置密码，请联系系统管理员</p>
+   </div>
+   <div class="auth-copyright">© 2026 DataGuard</div>
+  </section>
  </main>
  <div v-else class="app-root">
   <button v-if="menuOpen" class="mobile-mask" aria-label="关闭导航" @click="menuOpen=false"/>
   <aside class="sidebar" :class="{'open':menuOpen}">
-   <button class="brand" @click="navigate('dashboard')"><span class="brand-mark"><SecurityScanOutlined/></span><strong>MCP DataGuard</strong></button>
+   <button class="brand" @click="navigate('dashboard')"><span class="brand-mark"><img class="sidebar-brand-mark" src="/dataguard-mark.svg" alt=""/></span><strong>DataGuard</strong></button>
    <nav aria-label="主导航">
     <template v-for="(item,index) in visibleItems" :key="item.id">
      <div v-if="item.id==='settings'" class="nav-divider"></div>

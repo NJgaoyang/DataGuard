@@ -20,14 +20,14 @@ test('login form actually submits, reports invalid credentials, and opens the wo
  await page.route('**/api/dashboard',route=>route.fulfill({status:200,contentType:'application/json',
   body:JSON.stringify({stats:{requests:0,pending:0,denied:0,success:0},recent:[]})}));
  await page.goto('/');
- await expect(page.locator('.login-shell')).toBeVisible();
- await page.locator('.login-panel button[type="submit"]').click();
- await expect(page.getByText('请输入用户名')).toBeVisible();
+ await expect(page.locator('.auth-layout')).toBeVisible();
+ await page.locator('.auth-login-card .auth-submit').click();
+ expect(await page.locator('.auth-form input[autocomplete="username"]').evaluate((input:HTMLInputElement)=>input.validity.valueMissing)).toBe(true);
  expect(submissions).toHaveLength(0);
  await page.locator('input[autocomplete="username"]').fill('admin');
  await page.locator('input[autocomplete="current-password"]').fill('incorrect');
- await page.locator('.login-panel button[type="submit"]').click();
- await expect(page.locator('.login-error')).toContainText('用户名或密码错误');
+ await page.locator('.auth-login-card .auth-submit').click();
+ await expect(page.locator('.auth-error')).toContainText('用户名或密码错误');
  expect(submissions).toEqual([{username:'admin',password:'incorrect',csrf:'browser-test-csrf'}]);
  await page.locator('input[autocomplete="current-password"]').fill('correct-test-only');
  await page.locator('input[autocomplete="current-password"]').press('Enter');
@@ -74,12 +74,12 @@ test('first-login password change sends CSRF token rotated after login',async({p
  await page.goto('/');
  await page.locator('input[autocomplete="username"]').fill('admin');
  await page.locator('input[autocomplete="current-password"]').fill('current-test-password');
- await page.locator('.login-panel button[type="submit"]').click();
+ await page.locator('.auth-login-card .auth-submit').click();
  await expect(page.locator('.ant-modal')).toContainText('首次登录安全设置');
  await page.locator('.ant-modal input[autocomplete="current-password"]').fill('current-test-password');
  await page.locator('.ant-modal input[autocomplete="new-password"]').fill('NewPassword-123!test');
  await page.locator('.ant-modal-footer .ant-btn-primary').click();
- await expect(page.locator('.login-shell')).toBeVisible();
+ await expect(page.locator('.auth-layout')).toBeVisible();
  expect(passwordRequests).toEqual([{
   csrf:sessionToken,currentPassword:'current-test-password',newPassword:'NewPassword-123!test'
  }]);
