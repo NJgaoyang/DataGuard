@@ -70,5 +70,3 @@ onMounted(()=>void refresh());defineExpose({refresh});
  <a-form-item v-if="form.action==='APPROVAL'" class="full" label="审批人" required><a-select v-model:value="form.approverId" :options="approvers.map(a=>({value:a.id,label:a.displayName}))"/></a-form-item>
  </div></a-form></a-modal>
 </template>
-
-[executed on device: VM-0-4-tencentos (c1c2e3d4-a7e7-41e3-b2ed-dbf6a4613fad)]

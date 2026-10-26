@@ -116,5 +116,3 @@ onMounted(()=>void refresh());defineExpose({refresh});
   <a-textarea :value="secret" readonly :rows="3" style="margin-top:16px"/>
  </a-modal>
 </template>
-
-[executed on device: VM-0-4-tencentos (c1c2e3d4-a7e7-41e3-b2ed-dbf6a4613fad)]

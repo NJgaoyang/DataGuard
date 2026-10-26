@@ -88,5 +88,3 @@ defineExpose({refresh});
  </a-table>
 </section>
 </template>
-
-[executed on device: VM-0-4-tencentos (c1c2e3d4-a7e7-41e3-b2ed-dbf6a4613fad)]
