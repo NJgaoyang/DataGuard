@@ -453,9 +453,9 @@
 .table-row-actions .row-view-btn,.table-row-actions .row-more-btn{height:34px;padding:0 13px;border-radius:10px;box-shadow:none;font-size:13px}
 .table-row-actions .row-view-btn{color:#53647e;background:#f5f7fa;border:1px solid #e7ebf2}
 .table-row-actions .row-view-btn:hover{color:#1865c9;border-color:#d7e4f7;background:#f0f5fd}
-.table-row-actions .row-more-btn{color:#425471;background:#f7f8fb;border:1px solid transparent}
+.table-row-actions .row-more-btn{color:#425471;background:#f7f8fb;border:1px solid transparent;display:inline-flex;align-items:center;justify-content:center;gap:5px;min-width:84px;line-height:1}
 .table-row-actions .row-more-btn:hover{background:#ebf0f8;color:#1865c9}
-.row-more-chevron{font-size:16px;margin-left:3px;line-height:1}
+.row-more-chevron{display:inline-flex;align-items:center;justify-content:center;font-size:12px;line-height:1;margin:0;transform:translateY(1px)}
 .row-more-menu.ant-dropdown-menu{min-width:205px;padding:12px;border-radius:16px;background:#fff;box-shadow:0 14px 42px rgba(27,41,67,.14);border:1px solid #f1f3f7}
 .row-more-menu .ant-dropdown-menu-item{min-height:43px;padding:9px 12px;border-radius:8px;font-size:13px;color:#34445d}
 .row-more-menu .ant-dropdown-menu-title-content{display:flex;align-items:center;gap:12px}
