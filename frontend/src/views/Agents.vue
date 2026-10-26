@@ -24,7 +24,8 @@ async function loadUsage(){if(!selected.value)return;try{usage.value=await api('
 watch(tab,next=>{if(next==='usage')void loadUsage()});
 async function openCreate(){try{if(props.user.roleCode==='ADMIN')users.value=await api('/api/users');form.value={name:'',ownerId:'',validDays:30};createOpen.value=true}catch(e){fail(e)}}
 async function save(){try{const data=await api<DataRow>('/api/agents','POST',{...form.value,ownerId:form.value.ownerId||null});createOpen.value=false;secret.value=data.token;await refresh()}catch(e){fail(e)}}
-async function revoke(){if(!selected.value)return;try{await api('/api/agents/'+selected.value.id+'/revoke','POST');selected.value=null;await refresh()}catch(e){fail(e)}}
+async function revokeAgent(row:DataRow){try{await api('/api/agents/'+row.id+'/revoke','POST');selected.value=null;await refresh()}catch(e){fail(e)}}
+async function revoke(){if(selected.value)await revokeAgent(selected.value)}
 async function grantTable(){if(!selected.value||!sourceId.value||!tableName.value)return;try{await api('/api/agents/'+selected.value.id+'/tables','POST',{sourceId:sourceId.value,tableName:tableName.value});await open(selected.value)}catch(e){fail(e)}}
 async function grantColumn(){if(!selected.value||!sourceId.value||!tableName.value||!columnName.value)return;try{await api('/api/agents/'+selected.value.id+'/columns','POST',{sourceId:sourceId.value,tableName:tableName.value,columnName:columnName.value});await open(selected.value)}catch(e){fail(e)}}
 async function removeTable(r:DataRow){if(!selected.value)return;try{await api('/api/agents/'+selected.value.id+'/tables/'+r.sourceId+'/'+r.tableName,'DELETE');await open(selected.value)}catch(e){fail(e)}}
@@ -41,7 +42,7 @@ onMounted(()=>void refresh());defineExpose({refresh});
  <a-table-column title="所属用户" data-index="ownerName"/>
  <a-table-column title="状态"><template #default="{record}"><a-tag :color="status(record)==='正常'?'green':'red'">{{status(record)}}</a-tag></template></a-table-column>
  <a-table-column title="最近访问"><template #default="{record}">{{stamp(record.lastAccess)}}</template></a-table-column>
- <a-table-column title="操作"><template #default="{record}"><a-button type="link" @click="open(record)">查看</a-button></template></a-table-column>
+ <a-table-column title="操作" :width="185"><template #default="{record}"><a-space size="small"><a-button type="link" @click="open(record)">查看</a-button><a-button v-if="user.roleCode==='ADMIN'" type="link" :disabled="!!record.revokedAt||!record.enabled" danger @click="confirm('确认撤销 Agent？Token 将立即失效且无法恢复。',()=>revokeAgent(record))">撤销</a-button></a-space></template></a-table-column>
  </a-table></section>
  <section v-else class="panel detail-page" aria-label="Agent 详情页面">
  <teleport to="#workspace-actions"><a-button @click="selected=null">返回 Agent 列表</a-button></teleport>

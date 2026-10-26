@@ -55,6 +55,35 @@ class SourceApi {
   return Map.of("id",id);
  }
 
+ record UpdateSource(String name,String type,String host,Integer port,String databaseName,String username,String password){}
+ @PutMapping("/{id}")
+ @org.springframework.transaction.annotation.Transactional
+ Map<String,Object> editSource(Authentication auth,@PathVariable String id,@RequestBody UpdateSource in){
+  Guard.admin(auth);String safe=Guard.id(id);
+  if(in==null||in.port()==null||in.port()<1||in.port()>65535||!List.of("MYSQL","STARROCKS").contains(in.type())||in.host()==null||!in.host().matches("[A-Za-z0-9.-]{1,253}"))throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid source");
+  String name=Guard.required(in.name(),128),dbName=Guard.identifier(in.databaseName()),username=Guard.required(in.username(),100);
+  if(in.password()!=null&&!in.password().isEmpty()&&in.password().length()>512)throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid password");
+  int n;
+  if(in.password()!=null&&!in.password().isEmpty())n=db.update("UPDATE dg_sources SET name=?,type=?,host=?,port=?,database_name=?,read_username=?,password_ciphertext=? WHERE id=?",name,in.type(),in.host(),in.port(),dbName,username,crypto.encrypt(in.password()),safe);
+  else n=db.update("UPDATE dg_sources SET name=?,type=?,host=?,port=?,database_name=?,read_username=? WHERE id=?",name,in.type(),in.host(),in.port(),dbName,username,safe);
+  if(n!=1)throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+  audit.log(auth.getName(),"SOURCE_UPDATED",null,safe,"SUCCESS","Metadata updated");return Map.of("updated",true);
+ }
+ @DeleteMapping("/{id}")
+ @org.springframework.transaction.annotation.Transactional
+ Map<String,Object> deleteSource(Authentication auth,@PathVariable String id){
+  Guard.admin(auth);String safe=Guard.id(id);
+  List<Map<String,Object>> existing=db.queryForList("SELECT id FROM dg_sources WHERE id=? FOR UPDATE",safe);
+  if(existing.isEmpty())throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+  Long refs=db.queryForObject("SELECT (SELECT COUNT(*) FROM dg_requests WHERE source_id=?)+(SELECT COUNT(*) FROM dg_rules WHERE source_id=?)",Long.class,safe,safe);
+  if(refs!=null&&refs>0)throw new ResponseStatusException(HttpStatus.CONFLICT,"Source has rules or historical requests; disable it instead");
+  db.update("DELETE FROM dg_agent_columns WHERE source_id=?",safe);
+  db.update("DELETE FROM dg_agent_tables WHERE source_id=?",safe);
+  db.update("DELETE FROM dg_source_columns WHERE source_id=?",safe);
+  db.update("DELETE FROM dg_source_tables WHERE source_id=?",safe);
+  db.update("DELETE FROM dg_sources WHERE id=?",safe);
+  audit.log(auth.getName(),"SOURCE_DELETED",null,safe,"SUCCESS","Source and grants removed");return Map.of("deleted",true);
+ }
  record CredentialUpdate(String username,String password){}
  @PostMapping("/{id}/credentials")
  Map<String,Object> credentials(Authentication auth,@PathVariable String id,@RequestBody CredentialUpdate input){

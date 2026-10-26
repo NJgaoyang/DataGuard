@@ -2,50 +2,67 @@
 import {computed,onMounted,ref,watch} from 'vue';
 import {api,match,page,fail,confirm,type DataRow} from '../api';
 const rows=ref<DataRow[]>([]),search=ref(''),selected=ref<DataRow|null>(null),tab=ref('fields'),
-  sourceOpen=ref(false),form=ref({name:'',type:'MYSQL',host:'',port:3306,databaseName:'',username:'',password:''}),
+  sourceOpen=ref(false),editingSourceId=ref(''),form=ref({name:'',type:'MYSQL',host:'',port:3306,databaseName:'',username:'',password:''}),
   tables=ref<DataRow[]>([]),columns=ref<DataRow[]>([]),activeTable=ref(''),newTable=ref(''),newColumn=ref(''),busy=ref(false),connectBusy=ref(false),connectResult=ref<DataRow|null>(null),credentialOpen=ref(false),tableSearch=ref(''),selectedFields=ref<string[]>([]),credentialForm=ref({username:'',password:''});
+const originalTables=ref<Record<string,boolean>>({});
+const originalColumns=ref<Record<string,Record<string,boolean>>>({});
+const draftColumns=ref<Record<string,DataRow[]>>({});
+const savedMasks=ref<Record<string,Record<string,boolean>>>({});
 const shownTables=computed(()=>tables.value.filter(t=>String(t.tableName).toLowerCase().includes(tableSearch.value.toLowerCase())));
 const allFieldsSelected=computed(()=>columns.value.length>0&&columns.value.every(c=>c.enabled));
 const fieldsBusy=ref(false);
-async function toggleTableGrant(item:DataRow){if(!selected.value||fieldsBusy.value)return;
- try{fieldsBusy.value=true;const url='/api/sources/'+selected.value.id+'/tables/'+item.tableName;
-  if(item.enabled){await api(url,'DELETE');if(activeTable.value===item.tableName)columns.value=[];}
-  else await api('/api/sources/'+selected.value.id+'/tables','POST',{name:item.tableName});
-  await loadTables();if(activeTable.value===item.tableName&& !item.enabled)await loadColumns(item.tableName);
- }catch(e){fail(e)}finally{fieldsBusy.value=false}}
-async function setFieldGrant(row:DataRow,grant:boolean){if(!selected.value||!activeTable.value||fieldsBusy.value)return;
- try{fieldsBusy.value=true;const url='/api/sources/'+selected.value.id+'/tables/'+activeTable.value+'/columns';
-  if(grant)await api(url,'POST',{name:row.columnName});else await api(url+'/'+row.columnName,'DELETE');
-  await loadColumns(activeTable.value);
- }catch(e){fail(e)}finally{fieldsBusy.value=false}}
-async function toggleAllFields(){if(!selected.value||!activeTable.value||fieldsBusy.value||!columns.value.length)return;
- const enable=!allFieldsSelected.value;
- if(!enable){confirm('取消全选会撤销当前表所有字段授权，确定继续？',()=>applyAll(false));return;}
- await applyAll(true);
+const dirtyGrants=computed(()=>tables.value.some(t=>{
+ const name=String(t.tableName);if(Boolean(t.enabled)!==Boolean(originalTables.value[name]))return true;
+ return (draftColumns.value[name]||[]).some(c=>Boolean(c.enabled)!==Boolean(originalColumns.value[name]?.[c.columnName]));
+}));
+function toggleTableGrant(item:DataRow){if(fieldsBusy.value)return;
+ item.enabled=!item.enabled;
+ const name=String(item.tableName);
+ if(!item.enabled){for(const c of draftColumns.value[name]||[])c.enabled=false;}
+ else if(draftColumns.value[name]?.length&&!(draftColumns.value[name]||[]).some(c=>c.enabled))for(const c of draftColumns.value[name])c.enabled=true;
 }
-async function applyAll(enable:boolean){if(!selected.value||!activeTable.value||fieldsBusy.value)return;
- try{fieldsBusy.value=true;const url='/api/sources/'+selected.value.id+'/tables/'+activeTable.value+'/columns';
-  for(const c of columns.value){if(Boolean(c.enabled)===enable)continue;
-   if(enable)await api(url,'POST',{name:c.columnName});else await api(url+'/'+c.columnName,'DELETE');
-  }await loadColumns(activeTable.value);
- }catch(e){fail(e)}finally{fieldsBusy.value=false}}
+function setFieldGrant(row:DataRow,grant:boolean){row.enabled=grant;}
+function toggleAllFields(){if(fieldsBusy.value)return;const grant=!allFieldsSelected.value;for(const c of columns.value)c.enabled=grant;}
+async function saveGrants(){if(!selected.value||fieldsBusy.value||!dirtyGrants.value)return;
+ try{fieldsBusy.value=true;const source=selected.value.id;
+  for(const t of tables.value){const name=String(t.tableName);const old=Boolean(originalTables.value[name]);const enabled=Boolean(t.enabled);
+   const tableUrl='/api/sources/'+source+'/tables/'+encodeURIComponent(name);
+   if(!enabled){if(old)await api(tableUrl,'DELETE');continue;}
+   if(!old)await api('/api/sources/'+source+'/tables','POST',{name});
+   const list=draftColumns.value[name]||[];
+   for(const c of list){const before=Boolean(originalColumns.value[name]?.[c.columnName]);if(Boolean(c.enabled)===before&&!(!old&&c.enabled))continue;
+    const path=tableUrl+'/columns';if(c.enabled)await api(path,'POST',{name:c.columnName});else if(before)await api(path+'/'+encodeURIComponent(c.columnName),'DELETE');
+   }
+  }
+  await loadTables();for(const name of Object.keys(draftColumns.value)){
+   const original=await fetchColumns(name);draftColumns.value[name]=original;
+   originalColumns.value[name]=Object.fromEntries(original.map(c=>[c.columnName,Boolean(c.enabled)]));
+  }
+  if(activeTable.value)columns.value=draftColumns.value[activeTable.value]||[];
+  await refresh();
+ }catch(e){fail(e);await loadTables();originalColumns.value={};draftColumns.value={};if(activeTable.value)await loadColumns(activeTable.value)}finally{fieldsBusy.value=false}
+}
 const filtered=computed(()=>rows.value.filter(r=>match(r,search.value,['name','type','host'])));
 async function refresh(){try{rows.value=await api('/api/sources')}catch(e){fail(e)}}
-async function open(row:DataRow){selected.value=row;tab.value='fields';activeTable.value='';selectedFields.value=[];tableSearch.value='';await loadTables()}
-async function loadTables(){if(!selected.value)return;try{tables.value=await api('/api/sources/'+selected.value.id+'/physical-tables')}catch{try{tables.value=await api('/api/sources/'+selected.value.id+'/tables')}catch(e){fail(e)}}}
+async function open(row:DataRow){selected.value=row;tab.value='fields';activeTable.value='';columns.value=[];draftColumns.value={};originalColumns.value={};tableSearch.value='';await loadTables()}
+async function loadTables(){if(!selected.value)return;try{tables.value=await api('/api/sources/'+selected.value.id+'/physical-tables')}catch{try{tables.value=await api('/api/sources/'+selected.value.id+'/tables')}catch(e){fail(e)}}originalTables.value=Object.fromEntries(tables.value.map(t=>[t.tableName,Boolean(t.enabled)]));}
+async function fetchColumns(table:string):Promise<DataRow[]>{
+ const base='/api/sources/'+selected.value?.id+'/tables/'+encodeURIComponent(table);
+ try{const physical=await api<DataRow[]>(base+'/physical-columns');if(physical.length)return physical;}catch{}
+ return api<DataRow[]>(base+'/columns');
+}
 async function loadColumns(table:string){
  activeTable.value=table;
- const base='/api/sources/'+selected.value?.id+'/tables/'+table;
- try{
-  const physical=await api<DataRow[]>(base+'/physical-columns');
-  if(!physical.length)throw Error('No metadata available');
-  columns.value=physical;
- }catch{
-  try{columns.value=await api(base+'/columns')}catch(e){fail(e)}
- }
+ if(!draftColumns.value[table])try{
+  const loaded=await fetchColumns(table);draftColumns.value[table]=loaded.map(c=>({...c,enabled:tables.value.find(t=>t.tableName===table)?.enabled?Boolean(c.enabled):false}));
+  originalColumns.value[table]=Object.fromEntries(loaded.map(c=>[c.columnName,Boolean(c.enabled)]));
+ }catch(e){fail(e);draftColumns.value[table]=[]}
+ columns.value=draftColumns.value[table];
 }
-function create(){form.value={name:'',type:'MYSQL',host:'',port:3306,databaseName:'',username:'',password:''};sourceOpen.value=true}
-async function save(){try{busy.value=true;await api('/api/sources','POST',form.value);sourceOpen.value=false;await refresh()}catch(e){fail(e)}finally{busy.value=false}}
+function create(){editingSourceId.value='';form.value={name:'',type:'MYSQL',host:'',port:3306,databaseName:'',username:'',password:''};sourceOpen.value=true}
+function editSource(row:DataRow){editingSourceId.value=row.id;form.value={name:row.name,type:row.type,host:row.host,port:row.port,databaseName:row.databaseName,username:row.username,password:''};sourceOpen.value=true}
+async function deleteSource(row:DataRow){try{await api('/api/sources/'+row.id,'DELETE');if(selected.value?.id===row.id)selected.value=null;await refresh()}catch(e){fail(e)}}
+async function save(){try{busy.value=true;if(editingSourceId.value)await api('/api/sources/'+editingSourceId.value,'PUT',form.value);else await api('/api/sources','POST',form.value);sourceOpen.value=false;await refresh()}catch(e){fail(e)}finally{busy.value=false}}
 async function testConnection(){if(!selected.value)return;try{
  connectBusy.value=true;connectResult.value=await api('/api/sources/'+selected.value.id+'/test','POST');
 }catch(e){connectResult.value={ok:false};fail(e)}finally{connectBusy.value=false}}
@@ -80,7 +97,7 @@ onMounted(()=>void refresh());defineExpose({refresh});
   <a-table-column title="主机地址"><template #default="{record}">{{record.host}}:{{record.port}}</template></a-table-column>
   <a-table-column title="授权表数" data-index="authorizedTables"/>
   <a-table-column title="状态"><template #default="{record}"><a-tag :color="record.enabled?'green':'red'">{{record.enabled?'正常':'已停用'}}</a-tag></template></a-table-column>
-  <a-table-column title="操作"><template #default="{record}"><a-button type="link" @click="open(record)">查看</a-button></template></a-table-column>
+  <a-table-column title="操作" :width="210"><template #default="{record}"><a-space size="small"><a-button type="link" @click="open(record)">查看</a-button><a-button type="link" @click="editSource(record)">编辑</a-button><a-button danger type="link" @click="confirm('确认删除数据源「'+record.name+'」？如存在审批历史或访问规则，将拒绝删除，请先停用。',()=>deleteSource(record))">删除</a-button></a-space></template></a-table-column>
  </a-table>
 </section>
 <section v-else class="panel detail-page" aria-label="数据源详情页面">
@@ -120,7 +137,7 @@ onMounted(()=>void refresh());defineExpose({refresh});
       <template v-if="activeTable"><div class="source-field-list"><div v-for="c in columns" :key="c.columnName" class="source-field-row"><a-checkbox :checked="!!c.enabled" :disabled="fieldsBusy||!tables.find(t=>t.tableName===activeTable)?.enabled" @change="setFieldGrant(c,$event.target.checked)">{{c.columnName}}</a-checkbox><a-checkbox :checked="!!c.masked" :disabled="!c.enabled||fieldsBusy" @change="toggleMask(c.columnName)">脱敏</a-checkbox></div></div></template><a-empty v-else :image="undefined" description="请选择左侧数据表"/>
      </div>
     </div>
-    <p class="subtle">勾选表或字段后立即保存授权。撤销授权会同步取消对应的 Agent 授权。</p>
+    <div class="source-grant-footer"><span class="subtle">勾选表或字段后，点击保存才会更新权限。</span><a-button type="primary" :loading="fieldsBusy" :disabled="!dirtyGrants" @click="saveGrants">保存</a-button></div>
    </a-tab-pane>
    <a-tab-pane key="limit" tab="访问限制"><a-descriptions :column="1" bordered size="small">
     <a-descriptions-item label="平台安全上限">200 行 / 次</a-descriptions-item>
@@ -130,7 +147,7 @@ onMounted(()=>void refresh());defineExpose({refresh});
  </template>
 </div>
 </section>
-<a-modal v-model:open="sourceOpen" title="新增数据源" :confirm-loading="busy" ok-text="保存" :width="610" @ok="save">
+<a-modal v-model:open="sourceOpen" :title="editingSourceId?'编辑数据源':'新增数据源'" :confirm-loading="busy" ok-text="保存" :width="610" @ok="save">
  <a-form layout="vertical"><div class="form-grid">
  <a-form-item label="名称" required><a-input v-model:value="form.name"/></a-form-item>
  <a-form-item label="数据库类型"><a-select v-model:value="form.type" :options="[{value:'MYSQL',label:'MySQL'},{value:'STARROCKS',label:'StarRocks'}]" @change="form.port=form.type==='STARROCKS'?9030:3306"/></a-form-item>
@@ -138,7 +155,7 @@ onMounted(()=>void refresh());defineExpose({refresh});
  <a-form-item label="端口"><a-input-number v-model:value="form.port" :min="1" :max="65535" style="width:100%"/></a-form-item>
  <a-form-item label="数据库名"><a-input v-model:value="form.databaseName"/></a-form-item>
  <a-form-item label="只读用户名"><a-input v-model:value="form.username"/></a-form-item>
- <a-form-item class="full" label="密码"><a-input-password v-model:value="form.password" autocomplete="new-password"/></a-form-item></div></a-form>
+ <a-form-item class="full" :label="editingSourceId?'新密码（留空则不修改）':'密码'"><a-input-password v-model:value="form.password" autocomplete="new-password"/></a-form-item></div></a-form>
 </a-modal>
 <a-modal v-model:open="credentialOpen" title="更新只读账号" ok-text="保存" @ok="updateCredentials">
   <a-form layout="vertical">

@@ -40,7 +40,7 @@ onMounted(()=>void refresh());defineExpose({refresh});
  <a-table-column title="动作"><template #default="{record}"><a-tag :color="record.action==='ALLOW'?'green':record.action==='APPROVAL'?'orange':'red'">{{labels[record.action]}}</a-tag></template></a-table-column>
  <a-table-column title="状态"><template #default="{record}"><a-tag :color="record.enabled?'green':'default'">{{record.enabled?'正常':'已停用'}}</a-tag></template></a-table-column>
  <a-table-column title="优先级" data-index="priority"/>
- <a-table-column title="操作"><template #default="{record}"><a-button type="link" @click="selected=record">查看</a-button></template></a-table-column>
+ <a-table-column title="操作" :width="220"><template #default="{record}"><a-space size="small"><a-button type="link" @click="selected=record">查看</a-button><a-button type="link" @click="edit(record)">编辑</a-button><a-button type="link" :danger="record.enabled" @click="confirm('确认变更规则状态？此操作会使关联待审批授权失效。',()=>toggle(record))">{{record.enabled?'停用':'启用'}}</a-button></a-space></template></a-table-column>
  </a-table></section>
  <section v-else class="panel detail-page" aria-label="规则详情页面">
  <teleport to="#workspace-actions"><a-button @click="selected=null">返回规则列表</a-button></teleport>

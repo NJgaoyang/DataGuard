@@ -444,3 +444,6 @@
 .source-table-choice.active{background:#e9f2ff;color:#1766e8}
 .source-table-choice button{flex:1;text-align:left;background:transparent;border:0;cursor:pointer;color:inherit;min-width:0}
 .source-table-choice small{font-size:11px;color:#8d9bab}
+
+.source-grant-footer{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:16px}
+.source-grant-footer .ant-btn{min-width:88px}
