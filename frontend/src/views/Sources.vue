@@ -97,7 +97,7 @@ onMounted(()=>void refresh());defineExpose({refresh});
   <a-table-column title="主机地址"><template #default="{record}">{{record.host}}:{{record.port}}</template></a-table-column>
   <a-table-column title="授权表数" data-index="authorizedTables"/>
   <a-table-column title="状态"><template #default="{record}"><a-tag :color="record.enabled?'green':'red'">{{record.enabled?'正常':'已停用'}}</a-tag></template></a-table-column>
-  <a-table-column title="操作" :width="210"><template #default="{record}"><a-space size="small"><a-button type="link" @click="open(record,'view')">查看</a-button><a-button type="link" @click="editSource(record)">编辑</a-button><a-button danger type="link" @click="confirm('删除数据源（不可恢复）「'+record.name+'」？如存在审批历史或访问规则，将拒绝删除，请先停用。',()=>deleteSource(record))">删除</a-button></a-space></template></a-table-column>
+  <a-table-column title="操作" :width="125"><template #default="{record}"><a-space size="small"><a-button type="link" @click="open(record,'view')">查看</a-button><a-dropdown :trigger="['click']"><a-button type="link">更多⌄</a-button><template #overlay><a-menu><a-menu-item @click="editSource(record)">编辑授权</a-menu-item><a-menu-divider/><a-menu-item danger @click="confirm('删除数据源（不可恢复）「'+record.name+'」？如存在审批历史或访问规则，将拒绝删除，请先停用。',()=>deleteSource(record))">删除数据源</a-menu-item></a-menu></template></a-dropdown></a-space></template></a-table-column>
  </a-table>
 </section>
 <section v-else class="panel detail-page" aria-label="数据源详情页面">
