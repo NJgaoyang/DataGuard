@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {computed,onMounted,ref} from 'vue';
+import {computed,onMounted,ref,watch} from 'vue';
 import {api,match,page,fail,confirm,type DataRow} from '../api';
 const rows=ref<DataRow[]>([]),sources=ref<DataRow[]>([]),agents=ref<DataRow[]>([]),approvers=ref<DataRow[]>([]),search=ref(''),selected=ref<DataRow|null>(null),createOpen=ref(false),editId=ref<string|null>(null),busy=ref(false);
 const defaultRule=()=>({name:'',sourceId:'',agentId:'',tableName:'*',columnName:'',minRows:1,maxRows:50,action:'ALLOW',priority:100,approverId:''});
@@ -26,6 +26,8 @@ async function save(){try{
 async function toggleSelected(){if(selected.value)await toggle(selected.value)}
 async function toggle(row:DataRow){try{await api('/api/rules/'+row.id+'/toggle','POST');selected.value=null;await refresh()}catch(e){fail(e)}}
 const condition=(row:DataRow)=>'读取 '+row.minRows+'～'+row.maxRows+' 行'+(row.columnName?' · '+row.columnName:'');
+const emit=defineEmits<{'detail-change':[open:boolean]}>();
+watch(selected,value=>emit('detail-change',Boolean(value)));
 onMounted(()=>void refresh());defineExpose({refresh});
 </script>
 <template>

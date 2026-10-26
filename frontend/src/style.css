@@ -344,3 +344,19 @@
  .app-root .workspace-actions .ant-btn{height:30px;min-height:30px;padding:0 9px}
  .app-root .workspace>.panel>.toolbar{padding:8px 11px}
 }
+
+/* Page hierarchy: lists show only one section title, details show parent / detail. */
+.app-root .page-breadcrumb{display:flex;align-items:center;min-width:0;gap:10px}
+.app-root .page-breadcrumb .breadcrumb-parent{
+ border:0;background:transparent;cursor:pointer;padding:4px 0;
+ color:#6c7f98;font:inherit;font-size:14px;white-space:nowrap;
+}
+.app-root .page-breadcrumb .breadcrumb-parent:hover{color:#1766e8}
+.app-root .page-breadcrumb .crumb-divider{color:#b8c4d2}
+.app-root .page-breadcrumb h1{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.app-root .topbar{justify-content:flex-end}
+@media(max-width:760px){
+ .app-root .page-breadcrumb{gap:7px}
+ .app-root .page-breadcrumb .breadcrumb-parent{font-size:13px}
+ .app-root .topbar{justify-content:space-between}
+}

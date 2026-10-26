@@ -3,7 +3,7 @@ import {computed,onMounted,ref,watch} from 'vue';
 import {api,stamp,fail,stateName,stateColor,type DataRow} from '../api';
 
 const props=defineProps<{initialRecordId?:string|null;initialStatus?:string}>();
-const emit=defineEmits<{closeDetail:[]}>();
+const emit=defineEmits<{closeDetail:[];'detail-change':[open:boolean]}>();
 const rows=ref<DataRow[]>([]),search=ref(''),status=ref(props.initialStatus||'all'),agent=ref('all'),source=ref('all'),
  date=ref<[string,string]|null>(null),detail=ref<DataRow|null>(null),busy=ref(false),
  currentPage=ref(1),total=ref(0),detailBusy=ref(false);
@@ -34,6 +34,7 @@ async function openRecord(id:string){
  }catch(e){fail(e);detail.value=null}finally{detailBusy.value=false}
 }
 function closeRecord(){detail.value=null;emit('closeDetail');}
+watch([detail,detailBusy],()=>emit('detail-change',Boolean(detail.value||detailBusy.value)));
 watch([search,status,agent,source,date],()=>{currentPage.value=1;void refresh()});
 watch(()=>props.initialRecordId,id=>{if(id)void openRecord(id);else detail.value=null});
 watch(()=>props.initialStatus,next=>{status.value=next||'all';currentPage.value=1;});

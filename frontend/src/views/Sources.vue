@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {computed,onMounted,ref} from 'vue';
+import {computed,onMounted,ref,watch} from 'vue';
 import {api,match,page,fail,confirm,type DataRow} from '../api';
 const rows=ref<DataRow[]>([]),search=ref(''),selected=ref<DataRow|null>(null),tab=ref('fields'),
   sourceOpen=ref(false),form=ref({name:'',type:'MYSQL',host:'',port:3306,databaseName:'',username:'',password:''}),
@@ -42,6 +42,8 @@ async function toggleMask(column:string){
  catch(e){fail(e)}
 }
 async function removeColumn(column:string){if(!selected.value)return;try{await api('/api/sources/'+selected.value.id+'/tables/'+activeTable.value+'/columns/'+column,'DELETE');await loadColumns(activeTable.value)}catch(e){fail(e)}}
+const emit=defineEmits<{'detail-change':[open:boolean]}>();
+watch(selected,value=>emit('detail-change',Boolean(value)));
 onMounted(()=>void refresh());defineExpose({refresh});
 </script>
 <template>

@@ -164,19 +164,54 @@ test('authenticated console uses a compact shared layout on every page',async({p
  }
 });
 
-test('single header row keeps breadcrumbs and removes secondary tabs for every page',async({page})=>{
- await expect(page.locator('.console-breadcrumb')).toHaveText('首页');
+test('list pages have one title and breadcrumbs exist only on detail pages',async({page})=>{
+ await expect(page.locator('.topbar .console-breadcrumb')).toHaveCount(0);
+ await expect(page.locator('.page-breadcrumb')).toHaveCount(0);
+ await expect(page.locator('.workspace-head h1')).toHaveCount(1);
  await expect(page.locator('.console-tabs')).toHaveCount(0);
- await expect(page.locator('.metric')).toHaveCount(4);
  const bg=await page.locator('.app-root').evaluate(el=>getComputedStyle(el).backgroundColor);
  expect(bg).toBe('rgb(243, 246, 250)');
  for(const label of ['数据源','Agent 管理','访问规则','审批中心','访问记录','系统设置']){
   await navigate(page,label);
-  await expect(page.locator('.console-breadcrumb')).toContainText(label);
-  await expect(page.locator('.console-tabs')).toHaveCount(0);
+  await expect(page.locator('.page-breadcrumb')).toHaveCount(0);
+  await expect(page.locator('.workspace-head h1')).toHaveCount(1);
  }
- await page.locator('.breadcrumb-home').click();
- await expect(page.locator('.workspace-head h1')).toHaveText('工作台');
+ await navigate(page,'数据源');
+ await page.getByRole('button',{name:'订单数据库'}).click();
+ await expect(page.locator('.page-breadcrumb')).toContainText('数据源');
+ await expect(page.locator('.page-breadcrumb')).toContainText('数据源详情');
+ await expect(page.locator('.workspace-head h1')).toHaveText('数据源详情');
+ await page.locator('.page-breadcrumb .breadcrumb-parent').click();
+ await expect(page.locator('.page-breadcrumb')).toHaveCount(0);
+ await expect(page.locator('.detail-page')).toHaveCount(0);
+ await expect(page.locator('.workspace-head h1')).toHaveText('数据源');
+ await expect(page.getByRole('button',{name:'订单数据库'})).toBeVisible();
+
+ await navigate(page,'Agent 管理');
+ await page.getByRole('button',{name:/数据分析 Agent/}).click();
+ await expect(page.locator('.page-breadcrumb')).toContainText('Agent 详情');
+ await page.locator('.page-breadcrumb .breadcrumb-parent').click();
+ await expect(page.locator('.detail-page')).toHaveCount(0);
+ await expect(page.locator('.page-breadcrumb')).toHaveCount(0);
+
+ await navigate(page,'访问规则');
+ await page.getByRole('button',{name:'订单表批量读取'}).click();
+ await expect(page.locator('.page-breadcrumb')).toContainText('规则详情');
+ await page.getByRole('button',{name:'返回规则列表'}).click();
+ await expect(page.locator('.page-breadcrumb')).toHaveCount(0);
+
+ await navigate(page,'审批中心');
+ await page.locator('.ant-table-tbody').getByRole('button',{name:'审批'}).first().click();
+ await expect(page.locator('.page-breadcrumb')).toContainText('审批详情');
+ await page.getByRole('button',{name:'返回审批列表'}).click();
+ await expect(page.locator('.page-breadcrumb')).toHaveCount(0);
+
+ await navigate(page,'访问记录');
+ await page.locator('.ant-table-tbody').getByRole('button',{name:'查看'}).first().click();
+ await expect(page.locator('.page-breadcrumb')).toContainText('访问详情');
+ await page.locator('.page-breadcrumb .breadcrumb-parent').click();
+ await expect(page.locator('.detail-page')).toHaveCount(0);
+ await expect(page.locator('.page-breadcrumb')).toHaveCount(0);
 });
 
 test('access records use Chinese calendar, date-time and fixed ten-row server pagination',async({page})=>{
@@ -195,6 +230,8 @@ test('access records use Chinese calendar, date-time and fixed ten-row server pa
 test('dashboard 查看 opens the exact record page and back restores list',async({page})=>{
  await page.locator('.ant-table-tbody').getByRole('button',{name:'查看'}).first().click();
  await expect(page.locator('.workspace-head h1')).toHaveText('访问详情');
+ await expect(page.locator('.page-breadcrumb')).toContainText('访问记录');
+ await expect(page.locator('.page-breadcrumb')).toContainText('访问详情');
  await expect(page.locator('.detail-page')).toContainText('q1');
  await expect(page.locator('.detail-page')).toContainText('客服 Agent');
  await expect(page.locator('.ant-drawer')).toHaveCount(0);
@@ -219,7 +256,7 @@ test('dashboard cards carry the correct filters to destination lists',async({pag
 });
 
 test('page header is single-level with centered actions and no duplicate list headers',async({page})=>{
- await expect(page.locator('.console-breadcrumb')).toHaveText('首页');
+ await expect(page.locator('.page-breadcrumb')).toHaveCount(0);
  await navigate(page,'数据源');
  await expect(page.locator('.workspace>.panel>.panel-head')).toHaveCount(0);
  const create=page.getByRole('button',{name:'新增数据源'});

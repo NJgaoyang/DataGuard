@@ -25,6 +25,8 @@ async function grantTable(){if(!selected.value||!sourceId.value||!tableName.valu
 async function grantColumn(){if(!selected.value||!sourceId.value||!tableName.value||!columnName.value)return;try{await api('/api/agents/'+selected.value.id+'/columns','POST',{sourceId:sourceId.value,tableName:tableName.value,columnName:columnName.value});await open(selected.value)}catch(e){fail(e)}}
 async function removeTable(r:DataRow){if(!selected.value)return;try{await api('/api/agents/'+selected.value.id+'/tables/'+r.sourceId+'/'+r.tableName,'DELETE');await open(selected.value)}catch(e){fail(e)}}
 async function removeColumn(r:DataRow){if(!selected.value)return;try{await api('/api/agents/'+selected.value.id+'/columns/'+r.sourceId+'/'+r.tableName+'/'+r.columnName,'DELETE');await open(selected.value)}catch(e){fail(e)}}
+const emit=defineEmits<{'detail-change':[open:boolean]}>();
+watch(selected,value=>emit('detail-change',Boolean(value)));
 onMounted(()=>void refresh());defineExpose({refresh});
 </script>
 <template>

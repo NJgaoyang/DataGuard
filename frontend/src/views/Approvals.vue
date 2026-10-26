@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {computed,onMounted,ref} from 'vue';
+import {computed,onMounted,ref,watch} from 'vue';
 import {api,stamp,match,page,fail,stateName,stateColor,type DataRow,type User} from '../api';
 const props=defineProps<{user:User;initialScope?:string}>();
 const tab=ref(props.initialScope||(props.user.roleCode==='READER'?'mine':'pending')),rows=ref<DataRow[]>([]),search=ref(''),detail=ref<DataRow|null>(null),reason=ref(''),busy=ref(false);
@@ -11,6 +11,8 @@ function selectTab(t:string){tab.value=t;detail.value=null;void refresh()}
 async function decide(action:'approve'|'reject'){if(!detail.value)return;try{if(!reason.value.trim())throw Error('必须填写审批意见');busy.value=true;
  await api('/api/requests/'+detail.value.id+'/'+action,'POST',{reason:reason.value.trim()});
  detail.value=null;reason.value='';await refresh()}catch(e){fail(e)}finally{busy.value=false}}
+const emit=defineEmits<{'detail-change':[open:boolean]}>();
+watch(detail,value=>emit('detail-change',Boolean(value)));
 onMounted(()=>void refresh());defineExpose({refresh});
 </script>
 <template>
