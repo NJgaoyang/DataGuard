@@ -1,0 +1,24 @@
+{
+	default_sni 110.42.132.44
+}
+
+# Public IP-based HTTPS certificate. Caddy 2.10.1+ required.
+# Let's Encrypt IP certificates are short-lived and renewed automatically.
+110.42.132.44 {
+	tls {
+		issuer acme {
+			profile shortlived
+			disable_http_challenge
+		}
+	}
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=86400"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+	reverse_proxy 127.0.0.1:8080 {
+		header_up X-Forwarded-Proto https
+	}
+}

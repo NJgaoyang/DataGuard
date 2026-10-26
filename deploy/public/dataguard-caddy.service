@@ -1,0 +1,25 @@
+[Unit]
+Description=DataGuard Public HTTPS Reverse Proxy
+After=network-online.target dataguard-new.service
+Wants=network-online.target
+Requires=dataguard-new.service
+
+[Service]
+User=caddy
+Group=caddy
+Environment=XDG_DATA_HOME=/var/lib/caddy
+Environment=XDG_CONFIG_HOME=/var/lib/caddy
+ExecStart=/usr/local/bin/caddy run --config /etc/caddy/Caddyfile
+ExecReload=/usr/local/bin/caddy reload --config /etc/caddy/Caddyfile
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/caddy
+
+[Install]
+WantedBy=multi-user.target
