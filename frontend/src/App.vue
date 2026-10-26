@@ -185,7 +185,7 @@ onMounted(()=>{if(String(route.name||'').endsWith('-detail')){if(route.name==='r
    </div>
   </header>
   <main class="workspace">
-   <div class="workspace-head" v-if="detailOpen"><div class="workspace-actions"><div id="workspace-actions"></div><a-button class="refresh-action" @click="refresh"><ReloadOutlined/> 刷新</a-button></div></div>
+   <div class="workspace-head" v-if="detailOpen"><div class="workspace-actions"><div id="workspace-actions"></div></div></div>
    <Dashboard v-if="page==='dashboard'" :key="'dashboard'+reloadKey" @navigate="navigate" @open-record="openRecord"/>
    <Sources :initial-detail-id="String(route.params.id||'')" v-else-if="page==='sources'&&admin" :key="'sources'+reloadKey" @detail-change="onDetailChange"/>
    <Agents :initial-detail-id="String(route.params.id||'')" v-else-if="page==='agents'" :key="'agents'+reloadKey" :user="user" @detail-change="onDetailChange"/>
