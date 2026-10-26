@@ -135,7 +135,7 @@ class McpGateway {
     Map.of("name","get_access_request","description","Check approval status for one pending exact query","inputSchema",status));
  }
  @SuppressWarnings("unchecked")
- private Map<String,Object> invoke(Map<String,Object> agent,Map<String,Object> params){
+ Map<String,Object> invoke(Map<String,Object> agent,Map<String,Object> params){
   String name=String.valueOf(params.getOrDefault("name",""));
   if(!(params.getOrDefault("arguments",Map.of()) instanceof Map<?,?> arguments))
    throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
@@ -169,6 +169,14 @@ class McpGateway {
    default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Unknown tool");
   };
   return toolResult(result,false);
+ }
+ Object invokeRest(Map<String,Object> agent,String name,Map<String,Object> args){
+  Map<String,Object> envelope=invoke(agent,Map.of("name",name,"arguments",args));
+  try{
+   Object content=envelope.get("content");
+   String encoded=String.valueOf(((Map<?,?>)((List<?>)content).get(0)).get("text"));
+   return json.readValue(encoded,Object.class);
+  }catch(com.fasterxml.jackson.core.JsonProcessingException ex){throw new IllegalStateException("Invalid MCP response",ex);}
  }
  private static String str(Map<String,Object> params,String key){
   Object v=params.get(key);
