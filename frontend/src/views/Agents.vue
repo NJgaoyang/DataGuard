@@ -2,23 +2,40 @@
 import {computed,onMounted,ref,watch} from 'vue';
 import dayjs from 'dayjs';
 import {api,stamp,match,page,fail,confirm,stateName,stateColor,type DataRow,type User} from '../api';
-const props=defineProps<{user:User}>();
+const props=defineProps<{user:User;initialDetailId?:string}>();
 const rows=ref<DataRow[]>([]),sources=ref<DataRow[]>([]),users=ref<DataRow[]>([]),selected=ref<DataRow|null>(null),search=ref(''),tab=ref('grants'),secret=ref(''),createOpen=ref(false),form=ref({name:'',ownerId:'',expiresAt:'2099-01-31T23:59:59'}),grants=ref<DataRow>({tables:[],columns:[]}),
- sourceId=ref(''),tableName=ref(''),columnName=ref(''),expiry=ref(30),testResult=ref<DataRow|null>(null),testBusy=ref(false),rotationDays=ref(30),usage=ref<DataRow>({stats:{},recent:[]}),editingGrants=ref(false),viewMode=ref<'view'|'edit'>('view'),expandedSources=ref<string[]>([]),grantSource=ref(''),selectedGrantTable=ref(''),grantSearch=ref('');
+ sourceId=ref(''),tableName=ref(''),columnName=ref(''),expiry=ref(30),testResult=ref<DataRow|null>(null),testBusy=ref(false),rotationExpiry=ref('2099-01-31T23:59:59'),usage=ref<DataRow>({stats:{},recent:[]}),editingGrants=ref(false),grantBusy=ref(false),grantOptions=ref<DataRow[]>([]),grantFields=ref<Record<string,string[]>>({}),grantOriginal=ref<Record<string,string[]>>({}),viewMode=ref<'view'|'edit'>('view'),expandedSources=ref<string[]>([]),grantSource=ref(''),selectedGrantTable=ref(''),grantSearch=ref('');
 const mcpEndpoint=window.location.origin+'/mcp';
 const filtered=computed(()=>rows.value.filter(r=>match(r,search.value,['name','ownerName'])));
 const sourceName=(id:string)=>sources.value.find(s=>s.id===id)?.name||'数据源';
-const groupedGrants=computed(()=>{const groups=new Map<string,{sourceId:string;name:string;tables:DataRow[]}>();for(const r of grants.value.tables||[]){const id=String(r.sourceId);if(!groups.has(id))groups.set(id,{sourceId:id,name:sourceName(id),tables:[]});groups.get(id)!.tables.push(r)}return [...groups.values()]});
+const groupedGrants=computed(()=>{const m=new Map<string,{sourceId:string;name:string;tables:DataRow[]}>();for(const t of (viewMode.value==='edit'?grantOptions.value:grants.value.tables||[])){const id=String(t.sourceId);if(!m.has(id))m.set(id,{sourceId:id,name:sourceName(id),tables:[]});m.get(id)!.tables.push(t)}return [...m.values()]});
 const activeGrantGroup=computed(()=>groupedGrants.value.find(g=>g.sourceId===grantSource.value));
 const visibleGrantTables=computed(()=>activeGrantGroup.value?.tables.filter(x=>String(x.tableName).toLowerCase().includes(grantSearch.value.toLowerCase()))||[]);
 const activeGrantRow=computed(()=>activeGrantGroup.value?.tables.find(x=>x.tableName===selectedGrantTable.value));
-const columnsFor=(r:DataRow)=>(grants.value.columns||[]).filter((c:DataRow)=>c.sourceId===r.sourceId&&c.tableName===r.tableName);
+const grantKey=(source:string,table:string)=>source+'::'+table;
+const columnsFor=(t:DataRow)=>(grants.value.columns||[]).filter((c:DataRow)=>c.sourceId===t.sourceId&&c.tableName===t.tableName);
+const activeKey=computed(()=>grantKey(grantSource.value,selectedGrantTable.value));
+const activeOption=computed(()=>grantOptions.value.find(t=>t.sourceId===grantSource.value&&t.tableName===selectedGrantTable.value));
+const selectedColumns=computed(()=>grantFields.value[activeKey.value]||[]);
+const selectedAll=computed(()=>!!activeOption.value?.columns?.length&&selectedColumns.value.length===activeOption.value.columns.length);
+const grantDirty=computed(()=>Object.keys(grantFields.value).some(k=>JSON.stringify([...(grantFields.value[k]||[])].sort())!==JSON.stringify([...(grantOriginal.value[k]||[])].sort())));
+function selectGrantTable(name:string){selectedGrantTable.value=name}
+function toggleGrantTable(t:DataRow,enabled:boolean){const k=grantKey(t.sourceId,t.tableName);grantFields.value[k]=enabled?[...t.columns]:[];}
+function toggleGrantAll(){if(!activeOption.value)return;grantFields.value[activeKey.value]=selectedAll.value?[]:[...activeOption.value.columns]}
+async function loadGrantOptions(){if(!selected.value||props.user.roleCode!=='ADMIN')return;grantBusy.value=true;
+ try{const all=await api<DataRow[]>('/api/agents/'+selected.value.id+'/grant-options');grantOptions.value=all;
+  grantOriginal.value={};grantFields.value={};for(const t of all){const k=grantKey(t.sourceId,t.tableName);grantOriginal.value[k]=[...t.selectedColumns];grantFields.value[k]=[...t.selectedColumns]}
+ }catch(e){fail(e)}finally{grantBusy.value=false}}
+async function saveGrantChanges(){if(!selected.value||!grantDirty.value)return;grantBusy.value=true;
+ try{await api('/api/agents/'+selected.value.id+'/grants','PUT',{tables:grantOptions.value.filter(t=>grantFields.value[grantKey(t.sourceId,t.tableName)]?.length).map(t=>({sourceId:t.sourceId,tableName:t.tableName,columns:grantFields.value[grantKey(t.sourceId,t.tableName)]})),expectedColumns:(grants.value.columns||[]).map((c:DataRow)=>c.sourceId+'::'+c.tableName+'::'+c.columnName).sort()});
+  grants.value=await api('/api/agents/'+selected.value.id+'/grants');await loadGrantOptions();
+ }catch(e){fail(e)}finally{grantBusy.value=false}}
 const status=(r:DataRow)=>r.revokedAt?'已撤销':!r.enabled?'已停用':new Date(r.expiresAt).getTime()<Date.now()?'已过期':'正常';
 async function refresh(){try{rows.value=await api('/api/agents')}catch(e){fail(e)}}
-async function open(row:DataRow,mode:'view'|'edit'='view'){viewMode.value=mode;selected.value=row;tab.value='grants';editingGrants.value=mode==='edit'&&props.user.roleCode==='ADMIN';expandedSources.value=[];grantSource.value='';selectedGrantTable.value='';grantSearch.value='';usage.value={stats:{},recent:[]};try{grants.value=await api('/api/agents/'+row.id+'/grants');if(props.user.roleCode==='ADMIN')sources.value=await api('/api/sources')}catch(e){fail(e)}}
+async function open(row:DataRow,mode:'view'|'edit'='view'){viewMode.value=mode;selected.value=row;tab.value='grants';editingGrants.value=mode==='edit'&&props.user.roleCode==='ADMIN';expandedSources.value=[];grantSource.value='';selectedGrantTable.value='';grantSearch.value='';usage.value={stats:{},recent:[]};try{grants.value=await api('/api/agents/'+row.id+'/grants');if(props.user.roleCode==='ADMIN'){sources.value=await api('/api/sources');if(mode==='edit')await loadGrantOptions()}}catch(e){fail(e)}}
 async function testAgent(){if(!selected.value)return;try{testBusy.value=true;testResult.value=await api('/api/agents/'+selected.value.id+'/check')}catch(e){fail(e)}finally{testBusy.value=false}}
 async function rotate(){if(!selected.value)return;const id=selected.value.id;try{
- const updated=await api<DataRow>('/api/agents/'+id+'/rotate','POST',{validDays:rotationDays.value});
+ const updated=await api<DataRow>('/api/agents/'+id+'/rotate','POST',{expiresAt:rotationExpiry.value});
  secret.value=updated.token;await refresh();
 }catch(e){fail(e)}}
 async function loadUsage(){if(!selected.value)return;try{usage.value=await api('/api/agents/'+selected.value.id+'/usage')}catch(e){fail(e)}}
@@ -29,13 +46,9 @@ async function deleteAgent(row:DataRow){try{await api('/api/agents/'+row.id,'DEL
 async function toggleAgent(row:DataRow){try{await api('/api/agents/'+row.id+'/toggle','POST');await refresh()}catch(e){fail(e)}}
 async function revokeAgent(row:DataRow){try{await api('/api/agents/'+row.id+'/revoke','POST');selected.value=null;await refresh()}catch(e){fail(e)}}
 async function revoke(){if(selected.value)await revokeAgent(selected.value)}
-async function grantTable(){if(!selected.value||!sourceId.value||!tableName.value)return;try{await api('/api/agents/'+selected.value.id+'/tables','POST',{sourceId:sourceId.value,tableName:tableName.value});await open(selected.value)}catch(e){fail(e)}}
-async function grantColumn(){if(!selected.value||!sourceId.value||!tableName.value||!columnName.value)return;try{await api('/api/agents/'+selected.value.id+'/columns','POST',{sourceId:sourceId.value,tableName:tableName.value,columnName:columnName.value});await open(selected.value)}catch(e){fail(e)}}
-async function removeTable(r:DataRow){if(!selected.value)return;try{await api('/api/agents/'+selected.value.id+'/tables/'+r.sourceId+'/'+r.tableName,'DELETE');await open(selected.value)}catch(e){fail(e)}}
-async function removeColumn(r:DataRow){if(!selected.value)return;try{await api('/api/agents/'+selected.value.id+'/columns/'+r.sourceId+'/'+r.tableName+'/'+r.columnName,'DELETE');await open(selected.value)}catch(e){fail(e)}}
-const emit=defineEmits<{'detail-change':[value:{open:boolean;name:string}]}>();
-watch(selected,value=>emit('detail-change',{open:Boolean(value),name:String(value?.name||'')}));
-onMounted(()=>void refresh());defineExpose({refresh});
+const emit=defineEmits<{'detail-change':[value:{open:boolean;name:string;id:string}]}>();
+watch(selected,value=>emit('detail-change',{open:Boolean(value),name:String(value?.name||''),id:String(value?.id||'')}));
+onMounted(async()=>{await refresh();if(props.initialDetailId){const item=rows.value.find(x=>x.id===props.initialDetailId);if(item)await open(item,'view')}});defineExpose({refresh});
 </script>
 <template>
 <section v-if="!selected" class="panel">
@@ -60,7 +73,7 @@ onMounted(()=>void refresh());defineExpose({refresh});
     </a-descriptions>
     <div class="drawer-actions" style="align-items:center;flex-wrap:wrap">
      <a-button :loading="testBusy" @click="testAgent">接入检测</a-button>
-     <a-input-number v-if="viewMode==='edit'" v-model:value="rotationDays" :min="1" :max="90" :step="1" style="width:90px"/>
+     <a-date-picker v-if="viewMode==='edit'" :value="dayjs(rotationExpiry)" show-time format="YYYY-MM-DD HH:mm:ss" @change="(date:any)=>rotationExpiry=date?date.format('YYYY-MM-DDTHH:mm:ss'):''"/>
      <a-button v-if="viewMode==='edit'" @click="confirm('令牌轮换后，原 Token 会立即失效，确认？',rotate)">轮换 Token</a-button>
      <a-button v-if="viewMode==='edit'" danger @click="confirm('撤销后令牌立即失效，确认？',revoke)">撤销 Agent</a-button>
     </div>
@@ -71,29 +84,19 @@ onMounted(()=>void refresh());defineExpose({refresh});
     </a-tab-pane>
     <a-tab-pane key="grants" tab="访问授权">
      <div class="drawer-section-title">可访问的数据源和表</div>
-     <div v-if="!(grants.tables||[]).length" class="subtle">尚未为当前 Agent 授权数据表。</div>
+     <div v-if="viewMode==='view'&&!(grants.tables||[]).length" class="subtle">尚未为当前 Agent 授权数据表。</div>
      <div class="agent-grant-picker">
       <div class="agent-grant-pick-source"><span>数据源</span><a-select :value="grantSource||undefined" placeholder="请选择数据源" :options="groupedGrants.map(x=>({value:x.sourceId,label:x.name}))" @change="(value:string)=>{grantSource=value;selectedGrantTable='';grantSearch=''}"/></div>
       <div class="picker-two-pane">
        <div class="picker-tables"><div class="picker-pane-head">数据表 <span>{{visibleGrantTables.length}}</span></div><a-input v-model:value="grantSearch" class="picker-search" allow-clear placeholder="搜索数据表"/>
-        <div class="picker-list"><button v-for="item in visibleGrantTables" :key="item.tableName" type="button" class="picker-table-item" :class="{active:selectedGrantTable===item.tableName}" @click="selectedGrantTable=item.tableName"><span class="picker-checkbox">{{selectedGrantTable===item.tableName?'✓':''}}</span>{{item.tableName}}</button><a-empty v-if="!visibleGrantTables.length" :image="undefined" description="暂无可选数据表"/></div>
+        <div class="picker-list"><div v-for="item in visibleGrantTables" :key="item.tableName" class="source-table-choice" :class="{active:selectedGrantTable===item.tableName}"><a-checkbox v-if="viewMode==='edit'" :checked="!!grantFields[grantKey(item.sourceId,item.tableName)]?.length" @change="toggleGrantTable(item,$event.target.checked)"/><button type="button" @click="selectGrantTable(item.tableName)">{{item.tableName}}</button></div><a-empty v-if="!visibleGrantTables.length" :image="undefined" description="暂无可选数据表"/></div>
        </div>
-       <div class="picker-columns"><div class="picker-pane-head"><span>已授权字段 <span>{{activeGrantRow?columnsFor(activeGrantRow).length:0}}</span></span><a-button v-if="editingGrants&&activeGrantRow" danger type="link" size="small" @click="confirm('确认撤销整张表的 Agent 授权？',()=>removeTable(activeGrantRow!))">撤销表授权</a-button></div>
-        <div v-if="activeGrantRow" class="agent-grant-columns agent-grant-pane-columns"><span v-for="c in columnsFor(activeGrantRow)" :key="c.columnName" class="agent-grant-column">{{c.columnName}}<a-button v-if="editingGrants" size="small" type="text" danger @click="confirm('确认撤销字段授权？',()=>removeColumn(c))">×</a-button></span></div><a-empty v-else :image="undefined" description="请选择左侧数据表"/>
+       <div class="picker-columns"><div class="picker-pane-head"><span>字段 <span>{{viewMode==='edit'?selectedColumns.length:activeGrantRow?columnsFor(activeGrantRow).length:0}}</span></span><a-button v-if="viewMode==='edit'" type="link" :disabled="!activeOption" @click="toggleGrantAll">{{selectedAll?'取消全选':'全选'}}</a-button></div>
+        <template v-if="activeGrantRow"><a-checkbox-group v-if="viewMode==='edit'" v-model:value="grantFields[activeKey]" :options="(activeOption?.columns||[]).map((c:string)=>({label:c,value:c}))" class="preapply-column-grid"/><div v-else class="agent-grant-columns agent-grant-pane-columns"><span v-for="c in columnsFor(activeGrantRow)" :key="c.columnName" class="agent-grant-column">{{c.columnName}}</span></div></template><a-empty v-else :image="undefined" description="请选择左侧数据表"/>
        </div>
       </div>
      </div>
-     <div class="grant-limit">
-      <span>最大读取行数</span><strong>200 行</strong>
-      <a-button v-if="user.roleCode==='ADMIN'&&viewMode==='edit'" size="small" @click="editingGrants=!editingGrants">{{editingGrants?'完成编辑':'编辑授权'}}</a-button>
-     </div>
-     <a-form v-if="user.roleCode==='ADMIN'&&viewMode==='edit'&&editingGrants" class="grant-editor" layout="vertical">
-      <a-form-item label="数据源"><a-select v-model:value="sourceId" placeholder="选择已配置的数据源" :options="sources.map(s=>({value:s.id,label:s.name}))"/></a-form-item>
-      <a-form-item label="表名"><a-input v-model:value="tableName" placeholder="先配置平台表白名单"/></a-form-item>
-      <a-button @click="grantTable">授权该表</a-button>
-      <a-form-item label="字段名" style="margin-top:18px"><a-input v-model:value="columnName" placeholder="先配置平台字段白名单"/></a-form-item>
-      <a-button type="primary" @click="grantColumn">授权该字段</a-button>
-     </a-form>
+     <div class="grant-limit"><span>最大读取行数</span><strong>200 行</strong><a-button v-if="viewMode==='edit'" type="primary" :loading="grantBusy" :disabled="!grantDirty" @click="saveGrantChanges">保存授权</a-button></div>
      <p class="subtle">Agent 只能读取平台白名单与自身授权的交集。</p>
     </a-tab-pane>
     <a-tab-pane key="usage" tab="使用情况">

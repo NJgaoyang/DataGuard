@@ -1,19 +1,23 @@
 <script setup lang="ts">
 import {computed,onMounted,ref,watch} from 'vue';
 import {api,match,page,fail,confirm,type DataRow} from '../api';
-const rows=ref<DataRow[]>([]),sources=ref<DataRow[]>([]),agents=ref<DataRow[]>([]),approvers=ref<DataRow[]>([]),search=ref(''),selected=ref<DataRow|null>(null),createOpen=ref(false),editId=ref<string|null>(null),busy=ref(false);
+const props=defineProps<{initialDetailId?:string}>();
+const rows=ref<DataRow[]>([]),sources=ref<DataRow[]>([]),agents=ref<DataRow[]>([]),approvers=ref<DataRow[]>([]),search=ref(''),selected=ref<DataRow|null>(null),createOpen=ref(false),editId=ref<string|null>(null),busy=ref(false),ruleTables=ref<DataRow[]>([]),ruleColumns=ref<DataRow[]>([]);
 const defaultRule=()=>({name:'',sourceId:'',agentId:'',tableName:'*',columnName:'',minRows:1,maxRows:50,action:'ALLOW',priority:100,approverId:''});
 const form=ref(defaultRule());
 const labels:Record<string,string>={ALLOW:'直接放行',APPROVAL:'需要审批',DENY:'直接拒绝'};
 const filtered=computed(()=>rows.value.filter(x=>match(x,search.value,['name','tableName','sourceName','agentName'])));
 async function refresh(){try{rows.value=await api('/api/rules')}catch(e){fail(e)}}
 async function loadOptions(){[sources.value,agents.value,approvers.value]=await Promise.all([api('/api/sources'),api('/api/agents'),api('/api/approvers')]);}
+async function loadRuleTables(){ruleTables.value=[];ruleColumns.value=[];form.value.tableName='*';form.value.columnName='';if(!form.value.sourceId)return;try{ruleTables.value=(await api<DataRow[]>('/api/sources/'+form.value.sourceId+'/tables')).filter(x=>x.enabled)}catch(e){fail(e)}}
+async function loadRuleColumns(){ruleColumns.value=[];form.value.columnName='';if(!form.value.sourceId||form.value.tableName==='*')return;try{ruleColumns.value=(await api<DataRow[]>('/api/sources/'+form.value.sourceId+'/tables/'+encodeURIComponent(form.value.tableName)+'/columns')).filter(x=>x.enabled)}catch(e){fail(e)}}
 async function openCreate(){try{await loadOptions();form.value=defaultRule();editId.value=null;createOpen.value=true}catch(e){fail(e)}}
 async function edit(row:DataRow){try{
  await loadOptions();editId.value=row.id;
  form.value={name:row.name,sourceId:row.sourceId||'',agentId:row.agentId||'',tableName:row.tableName,
   columnName:row.columnName||'',minRows:Number(row.minRows),maxRows:Number(row.maxRows),
   action:row.action,priority:Number(row.priority),approverId:row.approverId||''};
+ if(form.value.sourceId){await loadRuleTables();form.value.tableName=row.tableName;if(row.tableName!=='*'){await loadRuleColumns();form.value.columnName=row.columnName||''}}
  selected.value=null;createOpen.value=true;
  }catch(e){fail(e)}}
 async function save(){try{
@@ -27,9 +31,9 @@ async function deleteRule(row:DataRow){try{await api('/api/rules/'+row.id,'DELET
 async function toggleSelected(){if(selected.value)await toggle(selected.value)}
 async function toggle(row:DataRow){try{await api('/api/rules/'+row.id+'/toggle','POST');selected.value=null;await refresh()}catch(e){fail(e)}}
 const condition=(row:DataRow)=>'读取 '+row.minRows+'～'+row.maxRows+' 行'+(row.columnName?' · '+row.columnName:'');
-const emit=defineEmits<{'detail-change':[value:{open:boolean;name:string}]}>();
-watch(selected,value=>emit('detail-change',{open:Boolean(value),name:String(value?.name||'')}));
-onMounted(()=>void refresh());defineExpose({refresh});
+const emit=defineEmits<{'detail-change':[value:{open:boolean;name:string;id:string}]}>();
+watch(selected,value=>emit('detail-change',{open:Boolean(value),name:String(value?.name||''),id:String(value?.id||'')}));
+onMounted(async()=>{await refresh();const row=rows.value.find(x=>x.id===props.initialDetailId);if(row)selected.value=row});defineExpose({refresh});
 </script>
 <template>
  <section v-if="!selected" class="panel">
@@ -60,10 +64,10 @@ onMounted(()=>void refresh());defineExpose({refresh});
  <a-modal v-model:open="createOpen" :title="editId?'编辑访问规则':'新建访问规则'" :ok-text="editId?'保存修改':'创建规则'" :confirm-loading="busy" :width="610" @ok="save">
  <a-form layout="vertical"><a-form-item label="规则名称" required><a-input v-model:value="form.name"/></a-form-item>
  <div class="form-grid">
- <a-form-item label="数据源"><a-select v-model:value="form.sourceId" :options="[{value:'',label:'全部数据源'},...sources.map(s=>({value:s.id,label:s.name}))]"/></a-form-item>
+ <a-form-item label="数据源"><a-select v-model:value="form.sourceId" @change="loadRuleTables" :options="[{value:'',label:'全部数据源'},...sources.map(s=>({value:s.id,label:s.name}))]"/></a-form-item>
  <a-form-item label="Agent"><a-select v-model:value="form.agentId" :options="[{value:'',label:'全部 Agent'},...agents.map(a=>({value:a.id,label:a.name}))]"/></a-form-item>
- <a-form-item label="数据表"><a-input v-model:value="form.tableName" placeholder="表名或 *"/></a-form-item>
- <a-form-item label="指定字段（可选）"><a-input v-model:value="form.columnName"/></a-form-item>
+ <a-form-item label="数据表"><a-select v-model:value="form.tableName" :disabled="!form.sourceId" @change="loadRuleColumns" :options="[{value:'*',label:'全部表'},...ruleTables.map(t=>({value:t.tableName,label:t.tableName}))]"/></a-form-item>
+ <a-form-item label="指定字段（可选）"><a-select v-model:value="form.columnName" :disabled="!form.sourceId||form.tableName==='*'" :options="[{value:'',label:'全部字段'},...ruleColumns.map(c=>({value:c.columnName,label:c.columnName}))]"/></a-form-item>
  <a-form-item label="最少读取行数"><a-input-number v-model:value="form.minRows" :min="1" :max="200" style="width:100%"/></a-form-item>
  <a-form-item label="最多读取行数"><a-input-number v-model:value="form.maxRows" :min="1" :max="200" style="width:100%"/></a-form-item>
  <a-form-item label="动作"><a-select v-model:value="form.action" :options="Object.entries(labels).map(([value,label])=>({value,label}))"/></a-form-item>

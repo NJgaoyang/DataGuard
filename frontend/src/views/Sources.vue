@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {computed,onMounted,ref,watch} from 'vue';
 import {api,match,page,fail,confirm,type DataRow} from '../api';
+const props=defineProps<{initialDetailId?:string}>();
 const rows=ref<DataRow[]>([]),search=ref(''),selected=ref<DataRow|null>(null),tab=ref('fields'),
   sourceOpen=ref(false),viewMode=ref<'view'|'edit'>('view'),form=ref({name:'',type:'MYSQL',host:'',port:3306,databaseName:'',username:'',password:''}),
   tables=ref<DataRow[]>([]),columns=ref<DataRow[]>([]),activeTable=ref(''),newTable=ref(''),newColumn=ref(''),busy=ref(false),connectBusy=ref(false),connectResult=ref<DataRow|null>(null),credentialOpen=ref(false),tableSearch=ref(''),selectedFields=ref<string[]>([]),credentialForm=ref({username:'',password:''});
@@ -61,6 +62,7 @@ async function loadColumns(table:string){
 }
 function create(){form.value={name:'',type:'MYSQL',host:'',port:3306,databaseName:'',username:'',password:''};sourceOpen.value=true}
 async function editSource(row:DataRow){await open(row,'edit')}
+async function toggleSource(row:DataRow){try{await api('/api/sources/'+row.id+'/toggle','POST');await refresh()}catch(e){fail(e)}}
 async function deleteSource(row:DataRow){try{await api('/api/sources/'+row.id,'DELETE');if(selected.value?.id===row.id)selected.value=null;await refresh()}catch(e){fail(e)}}
 async function save(){try{busy.value=true;await api('/api/sources','POST',form.value);sourceOpen.value=false;await refresh()}catch(e){fail(e)}finally{busy.value=false}}
 async function testConnection(){if(!selected.value)return;try{
@@ -84,9 +86,9 @@ async function toggleMask(column:string){
  catch(e){fail(e)}
 }
 async function removeColumn(column:string){if(!selected.value)return;try{await api('/api/sources/'+selected.value.id+'/tables/'+activeTable.value+'/columns/'+column,'DELETE');await loadColumns(activeTable.value)}catch(e){fail(e)}}
-const emit=defineEmits<{'detail-change':[value:{open:boolean;name:string}]}>();
-watch(selected,value=>emit('detail-change',{open:Boolean(value),name:String(value?.name||'')}));
-onMounted(()=>void refresh());defineExpose({refresh});
+const emit=defineEmits<{'detail-change':[value:{open:boolean;name:string;id:string}]}>();
+watch(selected,value=>emit('detail-change',{open:Boolean(value),name:String(value?.name||''),id:String(value?.id||'')}));
+onMounted(async()=>{await refresh();const row=rows.value.find(x=>x.id===props.initialDetailId);if(row)await open(row,'view')});defineExpose({refresh});
 </script>
 <template>
 <section v-if="!selected" class="panel">
@@ -97,7 +99,7 @@ onMounted(()=>void refresh());defineExpose({refresh});
   <a-table-column title="主机地址"><template #default="{record}">{{record.host}}:{{record.port}}</template></a-table-column>
   <a-table-column title="授权表数" data-index="authorizedTables"/>
   <a-table-column title="状态"><template #default="{record}"><a-tag :color="record.enabled?'green':'red'">{{record.enabled?'正常':'已停用'}}</a-tag></template></a-table-column>
-  <a-table-column title="操作" :width="190"><template #default="{record}"><a-space size="small" class="table-row-actions"><a-button class="row-view-btn" @click="open(record,'view')">查看</a-button><a-dropdown :trigger="['click']"><a-button class="row-more-btn">更多 <span class="row-more-chevron">⌄</span></a-button><template #overlay><a-menu class="row-more-menu"><a-menu-item @click="editSource(record)"><span class="row-menu-icon">✎</span>编辑授权</a-menu-item><a-menu-divider/><a-menu-item danger @click="confirm('删除数据源（不可恢复）「'+record.name+'」？如存在审批历史或访问规则，将拒绝删除，请先停用。',()=>deleteSource(record))"><span class="row-menu-icon">♜</span>删除数据源</a-menu-item></a-menu></template></a-dropdown></a-space></template></a-table-column>
+  <a-table-column title="操作" :width="190"><template #default="{record}"><a-space size="small" class="table-row-actions"><a-button class="row-view-btn" @click="open(record,'view')">查看</a-button><a-dropdown :trigger="['click']"><a-button class="row-more-btn">更多 <span class="row-more-chevron">⌄</span></a-button><template #overlay><a-menu class="row-more-menu"><a-menu-item @click="editSource(record)"><span class="row-menu-icon">✎</span>编辑授权</a-menu-item><a-menu-item @click="confirm(record.enabled?'确认停用数据源？Agent 将无法读取。':'确认启用数据源？恢复后仍需平台与 Agent 授权。',()=>toggleSource(record))"><span class="row-menu-icon">◷</span>{{record.enabled?'停用数据源':'启用数据源'}}</a-menu-item><a-menu-divider/><a-menu-item danger @click="confirm('删除数据源（不可恢复）「'+record.name+'」？如存在审批历史或访问规则，将拒绝删除，请先停用。',()=>deleteSource(record))"><span class="row-menu-icon">♜</span>删除数据源</a-menu-item></a-menu></template></a-dropdown></a-space></template></a-table-column>
  </a-table>
 </section>
 <section v-else class="panel detail-page" aria-label="数据源详情页面">

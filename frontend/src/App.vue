@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {computed,onMounted,onUnmounted,reactive,ref,watch} from 'vue';
+import {computed,defineAsyncComponent,onMounted,onUnmounted,reactive,ref,watch} from 'vue';
 import {
  DashboardOutlined,DatabaseOutlined,RobotOutlined,SafetyCertificateOutlined,
  AuditOutlined,FileSearchOutlined,SettingOutlined,MenuOutlined,ReloadOutlined,
@@ -8,13 +8,13 @@ import {
 import {api,fail,initCsrf,login,logout,type User,type DataRow} from './api';
 import zhCN from 'ant-design-vue/es/locale/zh_CN';
 import {useRoute,useRouter} from 'vue-router';
-import Dashboard from './views/Dashboard.vue';
-import Sources from './views/Sources.vue';
-import Agents from './views/Agents.vue';
-import Rules from './views/Rules.vue';
-import Approvals from './views/Approvals.vue';
-import Records from './views/Records.vue';
-import Settings from './views/Settings.vue';
+const Dashboard=defineAsyncComponent(()=>import('./views/Dashboard.vue'));
+const Sources=defineAsyncComponent(()=>import('./views/Sources.vue'));
+const Agents=defineAsyncComponent(()=>import('./views/Agents.vue'));
+const Rules=defineAsyncComponent(()=>import('./views/Rules.vue'));
+const Approvals=defineAsyncComponent(()=>import('./views/Approvals.vue'));
+const Records=defineAsyncComponent(()=>import('./views/Records.vue'));
+const Settings=defineAsyncComponent(()=>import('./views/Settings.vue'));
 
 const theme={token:{colorPrimary:'#1766e8',colorSuccess:'#18a76e',colorError:'#e04757',
   colorWarning:'#d59529',colorText:'#203147',colorTextSecondary:'#75839a',
@@ -23,7 +23,7 @@ const theme={token:{colorPrimary:'#1766e8',colorSuccess:'#18a76e',colorError:'#e
    Button:{borderRadius:5},Menu:{itemSelectedBg:'#eaf2ff'}}};
 const route=useRoute(),router=useRouter();
 const allowedPages=['dashboard','sources','agents','rules','approvals','records','settings'];
-function routePage(){const value=String(route.name||'dashboard');return value==='record-detail'?'records':allowedPages.includes(value)?value:'dashboard';}
+function routePage(){const value=String(route.name||'dashboard');return value.endsWith('-detail')?value.slice(0,-7):allowedPages.includes(value)?value:'dashboard';}
 const user=ref<User|null>(null),ready=ref(false),page=ref(routePage()),
   loading=ref(false),error=ref(''),
   currentPassword=ref(''),nextPassword=ref(''),changeOpen=ref(false),passwordBusy=ref(false),
@@ -33,7 +33,13 @@ const recordStatus=ref('all'),approvalScope=ref('');
 // The list has exactly one title. Only an opened record/entity uses a breadcrumb.
 const detailOpen=ref(false);
 const detailName=ref('');
-function onDetailChange(value:{open:boolean;name?:string}){detailOpen.value=value.open;detailName.value=value.open?(value.name||''):'';}
+function onDetailChange(value:{open:boolean;name?:string;id?:string}){
+ detailOpen.value=value.open;detailName.value=value.open?(value.name||''):'';
+ if(page.value==='records')return;
+ const desired=value.open&&value.id?{name:page.value+'-detail',params:{id:value.id}}:{name:page.value};
+ const path='/'+page.value+(value.open&&value.id?'/'+value.id:'');
+ if(route.path!==path)void router.replace(desired);
+}
 const sectionTitle=computed(()=>items.find(i=>i.id===page.value)?.label||'工作台');
 const detailTitle=computed(()=>detailName.value||({
  sources:'数据源详情',agents:'Agent 详情',rules:'规则详情',
@@ -90,14 +96,14 @@ function navigate(name:string,condition?:{status?:string;scope?:string}){
 }
 function openRecord(id:string){detailOpen.value=true;detailName.value='';recordId.value=id;page.value='records';menuOpen.value=false;void router.push({name:'record-detail',params:{id}})}
 watch(()=>route.fullPath,()=>{
- const next=routePage();const id=route.name==='record-detail'?String(route.params.id||''):'';
- if(next!==page.value||id!==recordId.value){page.value=next;recordId.value=id||null;reloadKey.value++;}
+ const next=routePage();const id=String(route.params.id||'');
+ if(next!==page.value||((next==='records'?id:undefined)!==(next==='records'?recordId.value||'':undefined))){page.value=next;recordId.value=next==='records'?id||null:null;reloadKey.value++;}
  if(!id){detailOpen.value=false;detailName.value='';}
  recordStatus.value=String(route.query.status||'all');approvalScope.value=String(route.query.scope||'');
  menuOpen.value=false;
 });
-function refresh(){if(route.name==='record-detail')void router.replace({name:'records'});detailOpen.value=false;detailName.value='';recordId.value=null;reloadKey.value++}
-onMounted(()=>{if(route.name==='record-detail'){recordId.value=String(route.params.id||'');detailOpen.value=true;}approvalScope.value=String(route.query.scope||'');recordStatus.value=String(route.query.status||'all');void start();noticeInterval=setInterval(()=>{if(user.value)void fetchNotices()},60000)});
+function refresh(){if(String(route.name||'').endsWith('-detail'))void router.replace({name:page.value});detailOpen.value=false;detailName.value='';recordId.value=null;reloadKey.value++}
+onMounted(()=>{if(String(route.name||'').endsWith('-detail')){if(route.name==='records-detail')recordId.value=String(route.params.id||'');detailOpen.value=true;}approvalScope.value=String(route.query.scope||'');recordStatus.value=String(route.query.status||'all');void start();noticeInterval=setInterval(()=>{if(user.value)void fetchNotices()},60000)});
 </script>
 <template>
 <a-config-provider :theme="theme" :locale="zhCN">
@@ -181,10 +187,10 @@ onMounted(()=>{if(route.name==='record-detail'){recordId.value=String(route.para
   <main class="workspace">
    <div class="workspace-head" v-if="detailOpen"><div class="workspace-actions"><div id="workspace-actions"></div><a-button class="refresh-action" @click="refresh"><ReloadOutlined/> 刷新</a-button></div></div>
    <Dashboard v-if="page==='dashboard'" :key="'dashboard'+reloadKey" @navigate="navigate" @open-record="openRecord"/>
-   <Sources v-else-if="page==='sources'&&admin" :key="'sources'+reloadKey" @detail-change="onDetailChange"/>
-   <Agents v-else-if="page==='agents'" :key="'agents'+reloadKey" :user="user" @detail-change="onDetailChange"/>
-   <Rules v-else-if="page==='rules'&&admin" :key="'rules'+reloadKey" @detail-change="onDetailChange"/>
-   <Approvals v-else-if="page==='approvals'" :key="'approvals'+reloadKey" :user="user" :initial-scope="approvalScope" @detail-change="onDetailChange"/>
+   <Sources :initial-detail-id="String(route.params.id||'')" v-else-if="page==='sources'&&admin" :key="'sources'+reloadKey" @detail-change="onDetailChange"/>
+   <Agents :initial-detail-id="String(route.params.id||'')" v-else-if="page==='agents'" :key="'agents'+reloadKey" :user="user" @detail-change="onDetailChange"/>
+   <Rules :initial-detail-id="String(route.params.id||'')" v-else-if="page==='rules'&&admin" :key="'rules'+reloadKey" @detail-change="onDetailChange"/>
+   <Approvals :initial-detail-id="String(route.params.id||'')" v-else-if="page==='approvals'" :key="'approvals'+reloadKey" :user="user" :initial-scope="approvalScope" @detail-change="onDetailChange"/>
    <Records v-else-if="page==='records'" :key="'records'+reloadKey" :initial-record-id="recordId" :initial-status="recordStatus" @close-detail="recordId=null;void router.push({name:'records'})" @detail-change="onDetailChange"/>
    <Settings v-else-if="page==='settings'" :key="'settings'+reloadKey" :user="user" @change-password="changeOpen=true"/>
   </main>

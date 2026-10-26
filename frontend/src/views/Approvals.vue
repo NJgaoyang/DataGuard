@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import {computed,onMounted,ref,watch} from 'vue';
 import {api,stamp,match,page,fail,stateName,stateColor,type DataRow,type User} from '../api';
-const props=defineProps<{user:User;initialScope?:string}>();
-const tab=ref(props.initialScope||(props.user.roleCode==='READER'?'mine':'pending')),rows=ref<DataRow[]>([]),search=ref(''),detail=ref<DataRow|null>(null),reason=ref(''),busy=ref(false),requestHelpOpen=ref(false),preapplyBusy=ref(false),preapplyAgents=ref<DataRow[]>([]),preapplyOptions=ref<DataRow[]>([]),preapplyLoading=ref(false),tableSearch=ref(''),preapplyForm=ref({agentId:'',sourceId:'',tableName:'',columns:[] as string[],requestedRows:50});
+const props=defineProps<{user:User;initialScope?:string;initialDetailId?:string}>();
+const tab=ref(props.initialScope||(props.user.roleCode==='READER'?'mine':'pending')),rows=ref<DataRow[]>([]),search=ref(''),detail=ref<DataRow|null>(null),approvalMode=ref(false),reason=ref(''),busy=ref(false),requestHelpOpen=ref(false),preapplyBusy=ref(false),preapplyAgents=ref<DataRow[]>([]),preapplyOptions=ref<DataRow[]>([]),preapplyLoading=ref(false),tableSearch=ref(''),preapplyForm=ref({agentId:'',sourceId:'',tableName:'',columns:[] as string[],requestedRows:50});
 const filtered=computed(()=>rows.value.filter(r=>match(r,search.value,['id','requesterName','agentName','tableName','sourceName'])));
 const canApprove=computed(()=>detail.value?.status==='PENDING'&&detail.value.approverUsername===props.user.username
  &&detail.value.ownerUsername!==props.user.username&&new Date(detail.value.expiresAt).getTime()>Date.now());
@@ -33,16 +33,16 @@ async function submitPreapply(){try{
  if(!preapplyForm.value.agentId||!preapplyForm.value.sourceId||!preapplyForm.value.tableName||!parts.length)throw Error('请选择 Agent、数据源、数据表和至少一个字段');
  const result=await api<{id:string}>('/api/requests/preapply','POST',{...preapplyForm.value,columns:parts});
  requestHelpOpen.value=false;selectTab('mine');
- const record=await api<DataRow>('/api/requests/'+result.id);detail.value=record;
+ const record=await api<DataRow>('/api/requests/'+result.id);detail.value=record;approvalMode.value=false;
 }catch(e){fail(e)}finally{preapplyBusy.value=false}}
 async function refresh(){try{rows.value=await api('/api/requests?scope='+tab.value)}catch(e){fail(e)}}
 function selectTab(t:string){tab.value=t;detail.value=null;void refresh()}
 async function decide(action:'approve'|'reject'){if(!detail.value)return;try{if(!reason.value.trim())throw Error('必须填写审批意见');busy.value=true;
  await api('/api/requests/'+detail.value.id+'/'+action,'POST',{reason:reason.value.trim()});
  detail.value=null;reason.value='';await refresh()}catch(e){fail(e)}finally{busy.value=false}}
-const emit=defineEmits<{'detail-change':[value:{open:boolean;name:string}]}>();
-watch(detail,value=>emit('detail-change',{open:Boolean(value),name:value?'申请 #'+String(value.id||''):''}));
-onMounted(()=>void refresh());defineExpose({refresh});
+const emit=defineEmits<{'detail-change':[value:{open:boolean;name:string;id:string}]}>();
+watch(detail,value=>emit('detail-change',{open:Boolean(value),name:value?'申请 #'+String(value.id||''):'',id:String(value?.id||'')}));
+onMounted(async()=>{await refresh();if(props.initialDetailId){try{detail.value=await api('/api/requests/'+props.initialDetailId)}catch(e){fail(e)}}});defineExpose({refresh});
 </script>
 <template>
 <section v-if="!detail" class="panel">
@@ -63,7 +63,7 @@ onMounted(()=>void refresh());defineExpose({refresh});
   <a-table-column title="访问对象" data-index="tableName"/>
   <a-table-column title="申请行数" data-index="requestedRows"/>
   <a-table-column title="状态"><template #default="{record}"><a-tag :color="stateColor(record.status)">{{stateName[record.status]||record.status}}</a-tag></template></a-table-column>
-  <a-table-column title="操作" :width="190"><template #default="{record}"><a-space size="small" class="table-row-actions"><a-button class="row-view-btn" @click="detail=record;reason=''">查看</a-button><a-dropdown v-if="record.approverUsername===user.username&&record.status==='PENDING'" :trigger="['click']"><a-button class="row-more-btn">更多 <span class="row-more-chevron">⌄</span></a-button><template #overlay><a-menu class="row-more-menu"><a-menu-item @click="detail=record;reason=''"><span class="row-menu-icon">◉</span>处理审批</a-menu-item></a-menu></template></a-dropdown></a-space></template></a-table-column>
+  <a-table-column title="操作" :width="190"><template #default="{record}"><a-space size="small" class="table-row-actions"><a-button class="row-view-btn" @click="detail=record;approvalMode=false;reason=''">查看</a-button><a-dropdown v-if="record.approverUsername===user.username&&record.status==='PENDING'" :trigger="['click']"><a-button class="row-more-btn">更多 <span class="row-more-chevron">⌄</span></a-button><template #overlay><a-menu class="row-more-menu"><a-menu-item @click="detail=record;approvalMode=true;reason=''"><span class="row-menu-icon">◉</span>处理审批</a-menu-item></a-menu></template></a-dropdown></a-space></template></a-table-column>
  </a-table>
 </section>
 <section v-else class="panel detail-page" aria-label="审批详情页面">
@@ -86,10 +86,11 @@ onMounted(()=>void refresh());defineExpose({refresh});
    <a-descriptions-item label="有效期">{{stamp(detail.expiresAt)}}</a-descriptions-item>
    <a-descriptions-item label="处理意见">{{detail.reason||'—'}}</a-descriptions-item>
   </a-descriptions>
-  <template v-if="canApprove"><a-form layout="vertical" style="margin-top:20px"><a-form-item label="审批意见" required><a-textarea v-model:value="reason" :rows="3" :maxlength="512"/></a-form-item></a-form>
+  <template v-if="approvalMode&&canApprove"><a-form layout="vertical" style="margin-top:20px"><a-form-item label="审批意见" required><a-textarea v-model:value="reason" :rows="3" :maxlength="512"/></a-form-item></a-form>
    <div class="approval-buttons"><a-button type="primary" :loading="busy" @click="decide('approve')">通过</a-button><a-button :loading="busy" @click="decide('reject')">拒绝</a-button></div>
 
 </template>
+  <a-button v-else-if="canApprove" style="margin-top:18px" @click="approvalMode=true">处理审批</a-button>
   <a-alert v-else-if="detail.status==='APPROVED'" style="margin-top:20px" type="info" message="审批已通过，Agent 可重试完全相同的请求一次。"/>
  </template>
 </div>

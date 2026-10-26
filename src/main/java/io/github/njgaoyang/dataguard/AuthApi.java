@@ -43,7 +43,7 @@ class SecurityConfig {
   http.csrf(csrf->csrf.ignoringRequestMatchers(PathPatternRequestMatcher.withDefaults().matcher("/mcp")))
    .authorizeHttpRequests(auth->auth
     .requestMatchers("/api/csrf","/mcp","/actuator/health","/assets/**","/","/index.html","/favicon.ico",
-      "/dashboard","/sources","/agents","/rules","/approvals","/records","/records/*","/settings").permitAll()
+      "/dashboard","/sources","/agents","/rules","/approvals","/records","/records/*","/agents/*","/sources/*","/rules/*","/approvals/*","/settings").permitAll()
     .anyRequest().authenticated())
    .exceptionHandling(e->e.defaultAuthenticationEntryPointFor(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED),
       PathPatternRequestMatcher.withDefaults().matcher("/api/**")))

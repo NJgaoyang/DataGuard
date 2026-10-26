@@ -103,16 +103,18 @@ class AgentApi {
  @PostMapping("/{id}/rotate")
  Map<String,Object> rotate(Authentication auth,@PathVariable String id,@RequestBody Rotate request){
   own(auth,id);
-  if(request==null||request.validDays()==null||request.validDays()<1||request.validDays()>90)
-   throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Token validity must be 1 to 90 days");
+  if(request==null||request.expiresAt()==null)throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Expiry required");
+  java.time.LocalDateTime expires;
+  try{expires=java.time.LocalDateTime.parse(request.expiresAt());}catch(java.time.format.DateTimeParseException e){throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid date");}
+  if(!expires.isAfter(java.time.LocalDateTime.now())||expires.isAfter(java.time.LocalDateTime.of(2099,12,31,23,59,59)))throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid expiry");
   String token=newToken();
-  int n=db.update("UPDATE dg_agents SET token_hash=?,expires_at=DATE_ADD(NOW(3),INTERVAL ? DAY) WHERE id=? AND enabled=1 AND revoked_at IS NULL",
-   digest(token),request.validDays(),Guard.id(id));
+  int n=db.update("UPDATE dg_agents SET token_hash=?,expires_at=? WHERE id=? AND enabled=1 AND revoked_at IS NULL",
+   digest(token),java.sql.Timestamp.valueOf(expires),Guard.id(id));
   if(n!=1)throw new ResponseStatusException(HttpStatus.CONFLICT,"Agent already revoked");
   audit.log(auth.getName(),"AGENT_TOKEN_ROTATED",null,id,"SUCCESS","");
   return Map.of("token",token,"id",Guard.id(id));
  }
- record Rotate(Integer validDays){}
+ record Rotate(String expiresAt){}
 
  // Safe connectivity precheck: returns effective grants and identity validity, never the secret.
  @GetMapping("/{id}/check")
@@ -139,6 +141,53 @@ class AgentApi {
   return Map.of(
    "tables",db.queryForList("SELECT source_id AS sourceId,table_name AS tableName FROM dg_agent_tables WHERE agent_id=? ORDER BY table_name",Guard.id(id)),
    "columns",db.queryForList("SELECT source_id AS sourceId,table_name AS tableName,column_name AS columnName FROM dg_agent_columns WHERE agent_id=? ORDER BY table_name,column_name",Guard.id(id)));
+ }
+ record GrantSelection(String sourceId,String tableName,List<String> columns){}
+ record GrantUpdate(List<GrantSelection> tables,List<String> expectedColumns){}
+ @GetMapping("/{id}/grant-options") List<Map<String,Object>> grantOptions(Authentication auth,@PathVariable String id){
+  Guard.admin(auth);String agent=Guard.id(id);
+  if(db.queryForObject("SELECT COUNT(*) FROM dg_agents WHERE id=?",Integer.class,agent)!=1)throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+  List<Map<String,Object>> data=db.queryForList("""
+   SELECT s.id AS sourceId,s.name AS sourceName,t.table_name AS tableName,c.column_name AS columnName,
+    EXISTS(SELECT 1 FROM dg_agent_columns ac WHERE ac.agent_id=? AND ac.source_id=s.id AND ac.table_name=t.table_name AND ac.column_name=c.column_name) AS selected
+   FROM dg_source_columns c JOIN dg_source_tables t ON c.source_id=t.source_id AND c.table_name=t.table_name
+    JOIN dg_sources s ON s.id=t.source_id
+   WHERE s.enabled=1 AND t.enabled=1 AND c.enabled=1 ORDER BY s.name,t.table_name,c.column_name LIMIT 2000
+   """,agent);
+  if(data.size()>=2000)throw new ResponseStatusException(HttpStatus.CONFLICT,"Too many available grant columns for bulk editing");
+  Map<String,Map<String,Object>> result=new java.util.LinkedHashMap<>();
+  for(var c:data){String key=c.get("sourceId")+"::"+c.get("tableName");var t=result.get(key);
+   if(t==null){t=new java.util.LinkedHashMap<>();t.put("sourceId",c.get("sourceId"));t.put("tableName",c.get("tableName"));t.put("columns",new java.util.ArrayList<String>());t.put("selectedColumns",new java.util.ArrayList<String>());result.put(key,t);}
+   ((List<String>)t.get("columns")).add(String.valueOf(c.get("columnName")));
+   if(Boolean.TRUE.equals(c.get("selected"))||"1".equals(String.valueOf(c.get("selected"))))((List<String>)t.get("selectedColumns")).add(String.valueOf(c.get("columnName")));
+  }
+  return new java.util.ArrayList<>(result.values());
+ }
+ @PutMapping("/{id}/grants")
+ @org.springframework.transaction.annotation.Transactional
+ Map<String,Object> replaceGrants(Authentication auth,@PathVariable String id,@RequestBody GrantUpdate in){
+  Guard.admin(auth);String agent=Guard.id(id);
+  if(in==null||in.tables()==null||in.tables().size()>200)throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid grants");
+  if(db.queryForList("SELECT id FROM dg_agents WHERE id=? FOR UPDATE",agent).isEmpty())throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+  List<String> current=db.query("SELECT CONCAT(source_id,'::',table_name,'::',column_name) FROM dg_agent_columns WHERE agent_id=? ORDER BY source_id,table_name,column_name",(rs,i)->rs.getString(1),agent);
+  if(in.expectedColumns()==null||!current.equals(in.expectedColumns().stream().sorted().toList()))
+   throw new ResponseStatusException(HttpStatus.CONFLICT,"Agent grants changed; refresh before saving");
+  var allowed=db.queryForList("""
+   SELECT s.id AS sourceId,t.table_name AS tableName,c.column_name AS columnName
+   FROM dg_source_columns c JOIN dg_source_tables t ON c.source_id=t.source_id AND c.table_name=t.table_name
+   JOIN dg_sources s ON s.id=t.source_id WHERE s.enabled=1 AND t.enabled=1 AND c.enabled=1
+   """);
+  var allow=new java.util.HashSet<String>();for(var a:allowed)allow.add(a.get("sourceId")+"::"+a.get("tableName")+"::"+a.get("columnName"));
+  var grants=new java.util.LinkedHashMap<String,java.util.List<String>>();
+  for(var t:in.tables()){
+   String source=Guard.id(t.sourceId()),table=Guard.identifier(t.tableName());
+   if(t.columns()==null||t.columns().isEmpty()||t.columns().size()>200)throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid columns");
+   String key=source+"::"+table;if(grants.containsKey(key))throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Duplicate table");
+   var cols=new java.util.ArrayList<String>();for(String raw:t.columns()){String col=Guard.identifier(raw);if(!allow.contains(key+"::"+col)||cols.contains(col))throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Unapproved column");cols.add(col);}grants.put(key,cols);
+  }
+  db.update("DELETE FROM dg_agent_columns WHERE agent_id=?",agent);db.update("DELETE FROM dg_agent_tables WHERE agent_id=?",agent);
+  for(var e:grants.entrySet()){String[] key=e.getKey().split("::",2);db.update("INSERT INTO dg_agent_tables(agent_id,source_id,table_name) VALUES(?,?,?)",agent,key[0],key[1]);for(String col:e.getValue())db.update("INSERT INTO dg_agent_columns(agent_id,source_id,table_name,column_name) VALUES(?,?,?,?)",agent,key[0],key[1],col);}
+  audit.log(auth.getName(),"AGENT_GRANTS_REPLACED",null,agent,"SUCCESS","tables="+grants.size());return Map.of("updated",true);
  }
  @GetMapping("/{id}/usage") Map<String,Object> usage(Authentication auth,@PathVariable String id){
   own(auth,id);String agent=Guard.id(id);
