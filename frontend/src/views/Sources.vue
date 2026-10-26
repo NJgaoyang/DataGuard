@@ -2,7 +2,7 @@
 import {computed,onMounted,ref,watch} from 'vue';
 import {api,match,page,fail,confirm,type DataRow} from '../api';
 const rows=ref<DataRow[]>([]),search=ref(''),selected=ref<DataRow|null>(null),tab=ref('fields'),
-  sourceOpen=ref(false),editingSourceId=ref(''),form=ref({name:'',type:'MYSQL',host:'',port:3306,databaseName:'',username:'',password:''}),
+  sourceOpen=ref(false),viewMode=ref<'view'|'edit'>('view'),form=ref({name:'',type:'MYSQL',host:'',port:3306,databaseName:'',username:'',password:''}),
   tables=ref<DataRow[]>([]),columns=ref<DataRow[]>([]),activeTable=ref(''),newTable=ref(''),newColumn=ref(''),busy=ref(false),connectBusy=ref(false),connectResult=ref<DataRow|null>(null),credentialOpen=ref(false),tableSearch=ref(''),selectedFields=ref<string[]>([]),credentialForm=ref({username:'',password:''});
 const originalTables=ref<Record<string,boolean>>({});
 const originalColumns=ref<Record<string,Record<string,boolean>>>({});
@@ -44,7 +44,7 @@ async function saveGrants(){if(!selected.value||fieldsBusy.value||!dirtyGrants.v
 }
 const filtered=computed(()=>rows.value.filter(r=>match(r,search.value,['name','type','host'])));
 async function refresh(){try{rows.value=await api('/api/sources')}catch(e){fail(e)}}
-async function open(row:DataRow){selected.value=row;tab.value='fields';activeTable.value='';columns.value=[];draftColumns.value={};originalColumns.value={};tableSearch.value='';await loadTables()}
+async function open(row:DataRow,mode:'view'|'edit'='view'){viewMode.value=mode;selected.value=row;tab.value='fields';activeTable.value='';columns.value=[];draftColumns.value={};originalColumns.value={};tableSearch.value='';await loadTables()}
 async function loadTables(){if(!selected.value)return;try{tables.value=await api('/api/sources/'+selected.value.id+'/physical-tables')}catch{try{tables.value=await api('/api/sources/'+selected.value.id+'/tables')}catch(e){fail(e)}}originalTables.value=Object.fromEntries(tables.value.map(t=>[t.tableName,Boolean(t.enabled)]));}
 async function fetchColumns(table:string):Promise<DataRow[]>{
  const base='/api/sources/'+selected.value?.id+'/tables/'+encodeURIComponent(table);
@@ -59,10 +59,10 @@ async function loadColumns(table:string){
  }catch(e){fail(e);draftColumns.value[table]=[]}
  columns.value=draftColumns.value[table];
 }
-function create(){editingSourceId.value='';form.value={name:'',type:'MYSQL',host:'',port:3306,databaseName:'',username:'',password:''};sourceOpen.value=true}
-function editSource(row:DataRow){editingSourceId.value=row.id;form.value={name:row.name,type:row.type,host:row.host,port:row.port,databaseName:row.databaseName,username:row.username,password:''};sourceOpen.value=true}
+function create(){form.value={name:'',type:'MYSQL',host:'',port:3306,databaseName:'',username:'',password:''};sourceOpen.value=true}
+async function editSource(row:DataRow){await open(row,'edit')}
 async function deleteSource(row:DataRow){try{await api('/api/sources/'+row.id,'DELETE');if(selected.value?.id===row.id)selected.value=null;await refresh()}catch(e){fail(e)}}
-async function save(){try{busy.value=true;if(editingSourceId.value)await api('/api/sources/'+editingSourceId.value,'PUT',form.value);else await api('/api/sources','POST',form.value);sourceOpen.value=false;await refresh()}catch(e){fail(e)}finally{busy.value=false}}
+async function save(){try{busy.value=true;await api('/api/sources','POST',form.value);sourceOpen.value=false;await refresh()}catch(e){fail(e)}finally{busy.value=false}}
 async function testConnection(){if(!selected.value)return;try{
  connectBusy.value=true;connectResult.value=await api('/api/sources/'+selected.value.id+'/test','POST');
 }catch(e){connectResult.value={ok:false};fail(e)}finally{connectBusy.value=false}}
@@ -92,12 +92,12 @@ onMounted(()=>void refresh());defineExpose({refresh});
 <section v-if="!selected" class="panel">
  <div class="toolbar"><a-button type="primary" @click="create">＋ 新增数据源</a-button><a-input-search class="search" v-model:value="search" allow-clear placeholder="搜索数据库名称、类型或主机"/><a-button class="toolbar-refresh" @click="refresh">刷新</a-button></div>
  <a-table :data-source="filtered" row-key="id" :pagination="page" :scroll="{x:740}">
-  <a-table-column title="名称"><template #default="{record}"><a-button type="link" class="name-link" @click="open(record)">{{record.name}}</a-button></template></a-table-column>
+  <a-table-column title="名称"><template #default="{record}"><a-button type="link" class="name-link" @click="open(record,'view')">{{record.name}}</a-button></template></a-table-column>
   <a-table-column title="类型" data-index="type"/>
   <a-table-column title="主机地址"><template #default="{record}">{{record.host}}:{{record.port}}</template></a-table-column>
   <a-table-column title="授权表数" data-index="authorizedTables"/>
   <a-table-column title="状态"><template #default="{record}"><a-tag :color="record.enabled?'green':'red'">{{record.enabled?'正常':'已停用'}}</a-tag></template></a-table-column>
-  <a-table-column title="操作" :width="210"><template #default="{record}"><a-space size="small"><a-button type="link" @click="open(record)">查看</a-button><a-button type="link" @click="editSource(record)">编辑</a-button><a-button danger type="link" @click="confirm('确认删除数据源「'+record.name+'」？如存在审批历史或访问规则，将拒绝删除，请先停用。',()=>deleteSource(record))">删除</a-button></a-space></template></a-table-column>
+  <a-table-column title="操作" :width="210"><template #default="{record}"><a-space size="small"><a-button type="link" @click="open(record,'view')">查看</a-button><a-button type="link" @click="editSource(record)">编辑</a-button><a-button danger type="link" @click="confirm('删除数据源（不可恢复）「'+record.name+'」？如存在审批历史或访问规则，将拒绝删除，请先停用。',()=>deleteSource(record))">删除</a-button></a-space></template></a-table-column>
  </a-table>
 </section>
 <section v-else class="panel detail-page" aria-label="数据源详情页面">
@@ -116,8 +116,8 @@ onMounted(()=>void refresh());defineExpose({refresh});
     </a-descriptions>
     <div class="drawer-actions" style="align-items:center;flex-wrap:wrap">
       <a-button :loading="connectBusy" @click="testConnection">测试连接</a-button>
-      <a-button @click="credentialForm={username:selected.username,password:''};credentialOpen=true">更新凭据</a-button>
-      <a-button :danger="selected.enabled" @click="confirm('确认更改数据源状态？',toggle)">{{selected.enabled?'停用数据源':'启用数据源'}}</a-button>
+      <a-button v-if="viewMode==='edit'" @click="credentialForm={username:selected.username,password:''};credentialOpen=true">更新凭据</a-button>
+      <a-button v-if="viewMode==='edit'" :danger="selected.enabled" @click="confirm('确认更改数据源状态？',toggle)">{{selected.enabled?'停用数据源':'启用数据源'}}</a-button>
     </div>
     <a-alert v-if="connectResult" :type="connectResult.ok?'success':'error'" show-icon
       :message="connectResult.ok?'连接成功':'连接失败'"
@@ -125,19 +125,20 @@ onMounted(()=>void refresh());defineExpose({refresh});
       style="margin-top:12px"/>
    </a-tab-pane>
    <a-tab-pane key="fields" tab="字段权限">
+    <a-alert v-if="viewMode==='view'" message="只读查看 · 需要更改表或字段授权，请返回列表点击编辑" type="info" show-icon style="margin-bottom:12px"/>
     <div class="picker-two-pane">
      <div class="picker-tables"><div class="picker-pane-head">数据表 <span>{{shownTables.length}}</span></div><a-input v-model:value="tableSearch" class="picker-search" allow-clear placeholder="搜索数据表"/>
       <div class="picker-list"><div v-for="item in shownTables" :key="item.tableName" class="source-table-choice" :class="{active:activeTable===item.tableName}">
-       <a-checkbox :checked="!!item.enabled" :disabled="fieldsBusy" @change="toggleTableGrant(item)"/>
+       <a-checkbox :checked="!!item.enabled" :disabled="viewMode==='view'||fieldsBusy" @change="toggleTableGrant(item)"/>
        <button type="button" @click="loadColumns(item.tableName)">{{item.tableName}}</button>
        <small v-if="item.enabled">已授权</small>
       </div><a-empty v-if="!shownTables.length" :image="undefined" description="暂无数据表"/></div>
      </div>
-     <div class="picker-columns"><div class="picker-pane-head"><span>字段 <span>{{columns.filter(c=>c.enabled).length}} / {{columns.length}}</span></span><a-button type="link" size="small" :disabled="!activeTable||!columns.length||fieldsBusy||!tables.find(t=>t.tableName===activeTable)?.enabled" @click="toggleAllFields">{{allFieldsSelected?'取消全选':'全选'}}</a-button></div>
-      <template v-if="activeTable"><div class="source-field-list"><div v-for="c in columns" :key="c.columnName" class="source-field-row"><a-checkbox :checked="!!c.enabled" :disabled="fieldsBusy||!tables.find(t=>t.tableName===activeTable)?.enabled" @change="setFieldGrant(c,$event.target.checked)">{{c.columnName}}</a-checkbox><a-checkbox :checked="!!c.masked" :disabled="!c.enabled||fieldsBusy" @change="toggleMask(c.columnName)">脱敏</a-checkbox></div></div></template><a-empty v-else :image="undefined" description="请选择左侧数据表"/>
+     <div class="picker-columns"><div class="picker-pane-head"><span>字段 <span>{{columns.filter(c=>c.enabled).length}} / {{columns.length}}</span></span><a-button type="link" size="small" :disabled="viewMode==='view'||!activeTable||!columns.length||fieldsBusy||!tables.find(t=>t.tableName===activeTable)?.enabled" @click="toggleAllFields">{{allFieldsSelected?'取消全选':'全选'}}</a-button></div>
+      <template v-if="activeTable"><div class="source-field-list"><div v-for="c in columns" :key="c.columnName" class="source-field-row"><a-checkbox :checked="!!c.enabled" :disabled="viewMode==='view'||fieldsBusy||!tables.find(t=>t.tableName===activeTable)?.enabled" @change="setFieldGrant(c,$event.target.checked)">{{c.columnName}}</a-checkbox><a-checkbox :checked="!!c.masked" :disabled="viewMode==='view'||!c.enabled||fieldsBusy" @change="toggleMask(c.columnName)">脱敏</a-checkbox></div></div></template><a-empty v-else :image="undefined" description="请选择左侧数据表"/>
      </div>
     </div>
-    <div class="source-grant-footer"><span class="subtle">勾选表或字段后，点击保存才会更新权限。</span><a-button type="primary" :loading="fieldsBusy" :disabled="!dirtyGrants" @click="saveGrants">保存</a-button></div>
+    <div v-if="viewMode==='edit'" class="source-grant-footer"><span class="subtle">勾选表或字段后，点击保存才会更新权限。</span><a-button type="primary" :loading="fieldsBusy" :disabled="!dirtyGrants" @click="saveGrants">保存</a-button></div>
    </a-tab-pane>
    <a-tab-pane key="limit" tab="访问限制"><a-descriptions :column="1" bordered size="small">
     <a-descriptions-item label="平台安全上限">200 行 / 次</a-descriptions-item>
@@ -147,7 +148,7 @@ onMounted(()=>void refresh());defineExpose({refresh});
  </template>
 </div>
 </section>
-<a-modal v-model:open="sourceOpen" :title="editingSourceId?'编辑数据源':'新增数据源'" :confirm-loading="busy" ok-text="保存" :width="610" @ok="save">
+<a-modal v-model:open="sourceOpen" title="新增数据源" :confirm-loading="busy" ok-text="保存" :width="610" @ok="save">
  <a-form layout="vertical"><div class="form-grid">
  <a-form-item label="名称" required><a-input v-model:value="form.name"/></a-form-item>
  <a-form-item label="数据库类型"><a-select v-model:value="form.type" :options="[{value:'MYSQL',label:'MySQL'},{value:'STARROCKS',label:'StarRocks'}]" @change="form.port=form.type==='STARROCKS'?9030:3306"/></a-form-item>
@@ -155,7 +156,7 @@ onMounted(()=>void refresh());defineExpose({refresh});
  <a-form-item label="端口"><a-input-number v-model:value="form.port" :min="1" :max="65535" style="width:100%"/></a-form-item>
  <a-form-item label="数据库名"><a-input v-model:value="form.databaseName"/></a-form-item>
  <a-form-item label="只读用户名"><a-input v-model:value="form.username"/></a-form-item>
- <a-form-item class="full" :label="editingSourceId?'新密码（留空则不修改）':'密码'"><a-input-password v-model:value="form.password" autocomplete="new-password"/></a-form-item></div></a-form>
+ <a-form-item class="full" label="密码"><a-input-password v-model:value="form.password" autocomplete="new-password"/></a-form-item></div></a-form>
 </a-modal>
 <a-modal v-model:open="credentialOpen" title="更新只读账号" ok-text="保存" @ok="updateCredentials">
   <a-form layout="vertical">
