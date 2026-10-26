@@ -474,3 +474,18 @@
  caret-color:#26334b;
  transition:background-color 9999s ease-out 0s;
 }
+
+/* Every row has exactly the same more control, including hover and dropdown-open states. */
+.table-row-actions .ant-btn.row-more-btn,
+.table-row-actions .ant-btn.row-more-btn:not(:disabled),
+.table-row-actions .ant-btn.row-more-btn[aria-expanded="true"]{
+ box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;
+ width:92px;min-width:92px;height:36px;padding:0 12px;gap:6px;
+ color:#425471;background:#f5f7fa;border:1px solid #e6ebf2;border-radius:10px;
+ box-shadow:none;font-size:13px;font-weight:400;line-height:1;
+}
+.table-row-actions .ant-btn.row-more-btn:hover,
+.table-row-actions .ant-btn.row-more-btn:focus-visible,
+.table-row-actions .ant-btn.row-more-btn[aria-expanded="true"]{background:#edf3fc;color:#1766e8;border-color:#dbe6f6}
+.table-row-actions .row-more-chevron{display:block;flex:none;width:14px;height:14px;margin:0;transform:none;vertical-align:middle}
+.table-row-actions .ant-btn.row-more-btn:disabled{opacity:.48;cursor:not-allowed}
