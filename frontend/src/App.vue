@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {computed,onMounted,ref} from 'vue';
+import {computed,onMounted,reactive,ref} from 'vue';
 import {
  DashboardOutlined,DatabaseOutlined,RobotOutlined,SafetyCertificateOutlined,
  AuditOutlined,FileSearchOutlined,SettingOutlined,MenuOutlined,ReloadOutlined,
@@ -20,9 +20,10 @@ const theme={token:{colorPrimary:'#1766e8',colorSuccess:'#18a76e',colorError:'#e
   components:{Table:{headerBg:'#f9fbfd',headerColor:'#728097',cellPaddingBlock:12,cellPaddingInline:14},
    Button:{borderRadius:5},Menu:{itemSelectedBg:'#eaf2ff'}}};
 const user=ref<User|null>(null),ready=ref(false),page=ref('dashboard'),
-  loading=ref(false),error=ref(''),username=ref(''),password=ref(''),
+  loading=ref(false),error=ref(''),
   currentPassword=ref(''),nextPassword=ref(''),changeOpen=ref(false),passwordBusy=ref(false),
   menuOpen=ref(false),reloadKey=ref(0);
+const loginModel=reactive({username:'',password:''});
 const items=[
  {id:'dashboard',label:'工作台',icon:DashboardOutlined},
  {id:'sources',label:'数据源',icon:DatabaseOutlined},
@@ -43,7 +44,7 @@ async function start(){
   changeOpen.value=Boolean(user.value.mustChangePassword);
  }catch{user.value=null}finally{ready.value=true}
 }
-async function signin(){loading.value=true;error.value='';try{user.value=await login(username.value,password.value);password.value='';changeOpen.value=Boolean(user.value.mustChangePassword)}catch(e){error.value=e instanceof Error?e.message:'登录失败'}finally{loading.value=false}}
+async function signin(){loading.value=true;error.value='';try{user.value=await login(loginModel.username,loginModel.password);loginModel.password='';changeOpen.value=Boolean(user.value.mustChangePassword)}catch(e){error.value=e instanceof Error?e.message:'登录失败'}finally{loading.value=false}}
 async function changePassword(){
  try{passwordBusy.value=true;const result=await api<{reauthenticate:boolean}>('/api/password','POST',{currentPassword:currentPassword.value,newPassword:nextPassword.value});
   if(result.reauthenticate){user.value=null;changeOpen.value=false;currentPassword.value='';nextPassword.value='';await initCsrf();}
@@ -61,9 +62,9 @@ onMounted(()=>void start());
    <div class="login-brand"><SecurityScanOutlined/> <strong>MCP DataGuard</strong></div>
    <h1>登录管理平台</h1><p>AI 数据访问安全网关</p>
    <a-alert v-if="error" :message="error" type="error" class="login-error"/>
-   <a-form layout="vertical" @finish="signin">
-    <a-form-item label="用户名"><a-input v-model:value="username" size="large" autofocus autocomplete="username"/></a-form-item>
-    <a-form-item label="密码"><a-input-password v-model:value="password" size="large" autocomplete="current-password"/></a-form-item>
+   <a-form layout="vertical" :model="loginModel" @finish="signin">
+    <a-form-item label="用户名" name="username" :rules="[{required:true,message:'请输入用户名'}]"><a-input v-model:value="loginModel.username" size="large" autofocus autocomplete="username"/></a-form-item>
+    <a-form-item label="密码" name="password" :rules="[{required:true,message:'请输入密码'}]"><a-input-password v-model:value="loginModel.password" size="large" autocomplete="current-password"/></a-form-item>
     <a-button type="primary" block size="large" html-type="submit" :loading="loading">登录</a-button>
    </a-form>
   </div>
