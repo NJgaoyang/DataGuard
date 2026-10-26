@@ -80,6 +80,18 @@ class AgentApi {
   audit.log(auth.getName(),"AGENT_DELETED",null,safe,"SUCCESS","No historical references");
   return Map.of("deleted",true);
  }
+ @PostMapping("/{id}/toggle")
+ @org.springframework.transaction.annotation.Transactional
+ Map<String,Object> toggleEnabled(Authentication auth,@PathVariable String id){
+  Guard.admin(auth);String safe=Guard.id(id);
+  var rows=db.queryForList("SELECT enabled,revoked_at AS revokedAt FROM dg_agents WHERE id=? FOR UPDATE",safe);
+  if(rows.isEmpty())throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+  if(rows.get(0).get("revokedAt")!=null)throw new ResponseStatusException(HttpStatus.CONFLICT,"Agent token was permanently revoked; create a new Agent");
+  boolean enabled=Boolean.TRUE.equals(rows.get(0).get("enabled"));
+  db.update("UPDATE dg_agents SET enabled=? WHERE id=?",!enabled,safe);
+  audit.log(auth.getName(),enabled?"AGENT_DISABLED":"AGENT_ENABLED",null,safe,"SUCCESS","");
+  return Map.of("enabled",!enabled);
+ }
  @PostMapping("/{id}/revoke") Map<String,Object> revoke(Authentication auth,@PathVariable String id){
   own(auth,id);db.update("UPDATE dg_agents SET revoked_at=NOW(3),enabled=0 WHERE id=?",Guard.id(id));
   audit.log(auth.getName(),"AGENT_REVOKED",null,id,"SUCCESS","");
