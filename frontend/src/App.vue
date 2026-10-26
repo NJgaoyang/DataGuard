@@ -94,7 +94,7 @@ function navigate(name:string,condition?:{status?:string;scope?:string}){
  page.value=name;menuOpen.value=false;
  void router.push({name:name as 'dashboard',query:condition?.scope?{scope:condition.scope}:condition?.status?{status:condition.status}:{}});
 }
-function openRecord(id:string){detailOpen.value=true;detailName.value='';recordId.value=id;page.value='records';menuOpen.value=false;void router.push({name:'record-detail',params:{id}})}
+function openRecord(id:string){detailOpen.value=true;detailName.value='';recordId.value=id;page.value='records';menuOpen.value=false;void router.push({name:'records-detail',params:{id}})}
 watch(()=>route.fullPath,()=>{
  const next=routePage();const id=String(route.params.id||'');
  if(next!==page.value||((next==='records'?id:undefined)!==(next==='records'?recordId.value||'':undefined))){page.value=next;recordId.value=next==='records'?id||null:null;reloadKey.value++;}
