@@ -11,8 +11,8 @@ function selectTab(t:string){tab.value=t;detail.value=null;void refresh()}
 async function decide(action:'approve'|'reject'){if(!detail.value)return;try{if(!reason.value.trim())throw Error('必须填写审批意见');busy.value=true;
  await api('/api/requests/'+detail.value.id+'/'+action,'POST',{reason:reason.value.trim()});
  detail.value=null;reason.value='';await refresh()}catch(e){fail(e)}finally{busy.value=false}}
-const emit=defineEmits<{'detail-change':[open:boolean]}>();
-watch(detail,value=>emit('detail-change',Boolean(value)));
+const emit=defineEmits<{'detail-change':[value:{open:boolean;name:string}]}>();
+watch(detail,value=>emit('detail-change',{open:Boolean(value),name:value?'申请 #'+String(value.id||''):''}));
 onMounted(()=>void refresh());defineExpose({refresh});
 </script>
 <template>
@@ -63,3 +63,5 @@ onMounted(()=>void refresh());defineExpose({refresh});
 </div>
 </section>
 </template>
+
+[executed on device: VM-0-4-tencentos (c1c2e3d4-a7e7-41e3-b2ed-dbf6a4613fad)]

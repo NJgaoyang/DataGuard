@@ -26,8 +26,8 @@ async function save(){try{
 async function toggleSelected(){if(selected.value)await toggle(selected.value)}
 async function toggle(row:DataRow){try{await api('/api/rules/'+row.id+'/toggle','POST');selected.value=null;await refresh()}catch(e){fail(e)}}
 const condition=(row:DataRow)=>'读取 '+row.minRows+'～'+row.maxRows+' 行'+(row.columnName?' · '+row.columnName:'');
-const emit=defineEmits<{'detail-change':[open:boolean]}>();
-watch(selected,value=>emit('detail-change',Boolean(value)));
+const emit=defineEmits<{'detail-change':[value:{open:boolean;name:string}]}>();
+watch(selected,value=>emit('detail-change',{open:Boolean(value),name:String(value?.name||'')}));
 onMounted(()=>void refresh());defineExpose({refresh});
 </script>
 <template>
@@ -70,3 +70,5 @@ onMounted(()=>void refresh());defineExpose({refresh});
  <a-form-item v-if="form.action==='APPROVAL'" class="full" label="审批人" required><a-select v-model:value="form.approverId" :options="approvers.map(a=>({value:a.id,label:a.displayName}))"/></a-form-item>
  </div></a-form></a-modal>
 </template>
+
+[executed on device: VM-0-4-tencentos (c1c2e3d4-a7e7-41e3-b2ed-dbf6a4613fad)]

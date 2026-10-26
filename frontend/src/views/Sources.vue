@@ -42,8 +42,8 @@ async function toggleMask(column:string){
  catch(e){fail(e)}
 }
 async function removeColumn(column:string){if(!selected.value)return;try{await api('/api/sources/'+selected.value.id+'/tables/'+activeTable.value+'/columns/'+column,'DELETE');await loadColumns(activeTable.value)}catch(e){fail(e)}}
-const emit=defineEmits<{'detail-change':[open:boolean]}>();
-watch(selected,value=>emit('detail-change',Boolean(value)));
+const emit=defineEmits<{'detail-change':[value:{open:boolean;name:string}]}>();
+watch(selected,value=>emit('detail-change',{open:Boolean(value),name:String(value?.name||'')}));
 onMounted(()=>void refresh());defineExpose({refresh});
 </script>
 <template>
@@ -126,3 +126,5 @@ onMounted(()=>void refresh());defineExpose({refresh});
   </a-form>
  </a-modal>
 </template>
+
+[executed on device: VM-0-4-tencentos (c1c2e3d4-a7e7-41e3-b2ed-dbf6a4613fad)]

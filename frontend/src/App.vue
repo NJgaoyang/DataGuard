@@ -28,8 +28,10 @@ const recordId=ref<string|null>(null);
 const recordStatus=ref('all'),approvalScope=ref('');
 // The list has exactly one title. Only an opened record/entity uses a breadcrumb.
 const detailOpen=ref(false);
+const detailName=ref('');
+function onDetailChange(value:{open:boolean;name?:string}){detailOpen.value=value.open;detailName.value=value.open?(value.name||''):'';}
 const sectionTitle=computed(()=>items.find(i=>i.id===page.value)?.label||'工作台');
-const detailTitle=computed(()=>({
+const detailTitle=computed(()=>detailName.value||({
  sources:'数据源详情',agents:'Agent 详情',rules:'规则详情',
  approvals:'审批详情',records:'访问详情'
 } as Record<string,string>)[page.value]||'详情');
@@ -78,11 +80,11 @@ function navigate(name:string,condition?:{status?:string;scope?:string}){
  // Navigating to the current section from a detail breadcrumb must remount its view,
  // otherwise the child's local selected record would remain open under the list heading.
  if(name===page.value&&detailOpen.value)reloadKey.value++;
- detailOpen.value=false;recordId.value=null;recordStatus.value=condition?.status||'all';approvalScope.value=condition?.scope||'';
+ detailOpen.value=false;detailName.value='';recordId.value=null;recordStatus.value=condition?.status||'all';approvalScope.value=condition?.scope||'';
  page.value=name;menuOpen.value=false;
 }
-function openRecord(id:string){detailOpen.value=true;recordId.value=id;page.value='records';menuOpen.value=false}
-function refresh(){detailOpen.value=false;recordId.value=null;reloadKey.value++}
+function openRecord(id:string){detailOpen.value=true;detailName.value='';recordId.value=id;page.value='records';menuOpen.value=false}
+function refresh(){detailOpen.value=false;detailName.value='';recordId.value=null;reloadKey.value++}
 onMounted(()=>{void start();noticeInterval=setInterval(()=>{if(user.value)void fetchNotices()},60000)});
 </script>
 <template>
@@ -172,11 +174,11 @@ onMounted(()=>{void start();noticeInterval=setInterval(()=>{if(user.value)void f
     <div class="workspace-actions"><div id="workspace-actions"></div><a-button class="refresh-action" @click="refresh"><ReloadOutlined/> 刷新</a-button></div>
    </div>
    <Dashboard v-if="page==='dashboard'" :key="'dashboard'+reloadKey" @navigate="navigate" @open-record="openRecord"/>
-   <Sources v-else-if="page==='sources'&&admin" :key="'sources'+reloadKey" @detail-change="detailOpen=$event"/>
-   <Agents v-else-if="page==='agents'" :key="'agents'+reloadKey" :user="user" @detail-change="detailOpen=$event"/>
-   <Rules v-else-if="page==='rules'&&admin" :key="'rules'+reloadKey" @detail-change="detailOpen=$event"/>
-   <Approvals v-else-if="page==='approvals'" :key="'approvals'+reloadKey" :user="user" :initial-scope="approvalScope" @detail-change="detailOpen=$event"/>
-   <Records v-else-if="page==='records'" :key="'records'+reloadKey" :initial-record-id="recordId" :initial-status="recordStatus" @close-detail="recordId=null" @detail-change="detailOpen=$event"/>
+   <Sources v-else-if="page==='sources'&&admin" :key="'sources'+reloadKey" @detail-change="onDetailChange"/>
+   <Agents v-else-if="page==='agents'" :key="'agents'+reloadKey" :user="user" @detail-change="onDetailChange"/>
+   <Rules v-else-if="page==='rules'&&admin" :key="'rules'+reloadKey" @detail-change="onDetailChange"/>
+   <Approvals v-else-if="page==='approvals'" :key="'approvals'+reloadKey" :user="user" :initial-scope="approvalScope" @detail-change="onDetailChange"/>
+   <Records v-else-if="page==='records'" :key="'records'+reloadKey" :initial-record-id="recordId" :initial-status="recordStatus" @close-detail="recordId=null" @detail-change="onDetailChange"/>
    <Settings v-else-if="page==='settings'" :key="'settings'+reloadKey" :user="user" @change-password="changeOpen=true"/>
   </main>
  </div>
@@ -190,3 +192,5 @@ onMounted(()=>{void start();noticeInterval=setInterval(()=>{if(user.value)void f
  </a-modal>
 </a-config-provider>
 </template>
+
+[executed on device: VM-0-4-tencentos (c1c2e3d4-a7e7-41e3-b2ed-dbf6a4613fad)]
