@@ -29,4 +29,4 @@ Flyway V1 创建 9 张核心表和 1 张审计表：dg_users、dg_sources、dg_s
 - 单次 APPROVED 授权通过行锁原子转为 EXECUTING，禁止重复消费；审批超时 24 小时自动失效。
 - 禁止申请人自审；审批通过不代表突破数据库权限或白名单。
 - MCP 只支持 JSON response 模式的 Streamable HTTP 2025 协议；不宣称支持 SSE/现代协议扩展。
-- 目前主要为设计和代码实现基线；公网运行、正式数据库权限、浏览器端到端和生产安全验收仍需独立测试。
+- 2026-10-26 已完成开发机 HTTPS 公网登录及 MySQL/StarRocks 隔离演示库的实际 JDBC、MCP 人工审批和审计验收；详细结果见 [P0 实机验收](P0_LIVE_ACCEPTANCE.md)。生产数据源、外部第三方 MCP SDK、故障及压力演练仍未认证。
