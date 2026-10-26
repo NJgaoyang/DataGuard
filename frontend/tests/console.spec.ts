@@ -138,3 +138,20 @@ test('authenticated console uses a compact shared layout on every page',async({p
   expect(ws).toBeLessThanOrEqual(70);
  }
 });
+
+test('top breadcrumb and page tabs work without redesigning the existing console',async({page})=>{
+ await expect(page.locator('.console-breadcrumb')).toContainText('工作台');
+ await expect(page.locator('.console-tabs')).toBeVisible();
+ await expect(page.locator('.metric')).toHaveCount(4);
+ const bg=await page.locator('.app-root').evaluate(el=>getComputedStyle(el).backgroundColor);
+ expect(bg).toBe('rgb(243, 246, 250)');
+ await navigate(page,'数据源');
+ await expect(page.locator('.console-breadcrumb')).toContainText('数据源');
+ await expect(page.locator('.console-tabs')).toContainText('数据源');
+ await navigate(page,'Agent 管理');
+ await expect(page.locator('.console-tabs')).toContainText('Agent 管理');
+ await page.getByRole('button',{name:'关闭Agent 管理标签'}).click();
+ await expect(page.locator('.workspace-head h1')).toHaveText('数据源');
+ await page.locator('.console-tab-home').click();
+ await expect(page.locator('.workspace-head h1')).toHaveText('工作台');
+});

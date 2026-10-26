@@ -34,6 +34,14 @@ const items=[
  {id:'settings',label:'系统设置',icon:SettingOutlined}
 ];
 const title=computed(()=>items.find(i=>i.id===page.value)?.label||'工作台');
+const openedTabs=ref<string[]>(['dashboard']);
+function closeTab(id:string){
+ if(id==='dashboard')return;
+ const index=openedTabs.value.indexOf(id);
+ if(index<0)return;
+ openedTabs.value.splice(index,1);
+ if(page.value===id)page.value=openedTabs.value[Math.max(0,index-1)]||'dashboard';
+}
 const admin=computed(()=>user.value?.roleCode==='ADMIN');
 const visibleItems=computed(()=>items.filter(i=>admin.value||!['sources','rules'].includes(i.id)));
 async function start(){
@@ -50,7 +58,10 @@ async function changePassword(){
   if(result.reauthenticate){user.value=null;changeOpen.value=false;currentPassword.value='';nextPassword.value='';await initCsrf();}
  }catch(e){fail(e)}finally{passwordBusy.value=false}
 }
-function navigate(name:string){page.value=name;menuOpen.value=false}
+function navigate(name:string){
+ if(!openedTabs.value.includes(name))openedTabs.value.push(name);
+ page.value=name;menuOpen.value=false;
+}
 function refresh(){reloadKey.value++}
 onMounted(()=>void start());
 </script>
@@ -104,7 +115,11 @@ onMounted(()=>void start());
   </aside>
   <header class="topbar">
    <button class="mobile-toggle" @click="menuOpen=!menuOpen" aria-label="打开导航"><MenuOutlined/></button>
-   <span class="topbar-context"></span>
+   <nav class="console-breadcrumb" aria-label="页面路径">
+    <button class="breadcrumb-home" @click="navigate('dashboard')">首页</button>
+    <span class="crumb-divider">/</span>
+    <span class="breadcrumb-current">{{title}}</span>
+   </nav>
    <div class="topbar-actions">
     <a-tooltip title="待审批请求"><button class="icon-button" aria-label="打开审批中心" @click="navigate('approvals')"><BellOutlined/></button></a-tooltip>
     <a-dropdown :trigger="['click']">
@@ -117,6 +132,18 @@ onMounted(()=>void start());
     </a-dropdown>
    </div>
   </header>
+  <nav class="console-tabs" aria-label="已打开页面">
+   <button class="console-tab console-tab-home" :class="{active:page==='dashboard'}" @click="navigate('dashboard')">首页</button>
+   <template v-for="id in openedTabs" :key="id">
+    <div class="console-tab" :class="{active:page===id}">
+     <button class="tab-label" @click="navigate(id)">
+      <span v-if="page===id" class="tab-dot" aria-hidden="true"></span>
+      {{items.find(item=>item.id===id)?.label}}
+     </button>
+     <button v-if="id!=='dashboard'" class="tab-close" :aria-label="'关闭'+items.find(item=>item.id===id)?.label+'标签'" @click="closeTab(id)">×</button>
+    </div>
+   </template>
+  </nav>
   <main class="workspace">
    <div class="workspace-head"><h1>{{title}}</h1><a-button @click="refresh"><ReloadOutlined/> 刷新</a-button></div>
    <Dashboard v-if="page==='dashboard'" :key="'dashboard'+reloadKey" @navigate="navigate"/>
