@@ -133,10 +133,13 @@ class AuthApi {
  @org.springframework.transaction.annotation.Transactional
  Map<String,Object> deleteUser(Authentication auth,@PathVariable String id){
   Guard.admin(auth);String safe=Guard.id(id);
-  List<Map<String,Object>> found=db.queryForList("SELECT username FROM dg_users WHERE id=? FOR UPDATE",safe);
+  List<Map<String,Object>> found=db.queryForList("SELECT username,enabled FROM dg_users WHERE id=? FOR UPDATE",safe);
   if(found.isEmpty())throw new ResponseStatusException(HttpStatus.NOT_FOUND);
   String username=String.valueOf(found.get(0).get("username"));
   if("admin".equals(username)||username.equals(auth.getName()))throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Protected account");
+  Object state=found.get(0).get("enabled");
+  if(state instanceof Number ? ((Number)state).intValue()!=0 : Boolean.TRUE.equals(state))
+   throw new ResponseStatusException(HttpStatus.CONFLICT,"Disable user before deletion");
   Long refs=db.queryForObject("""
    SELECT (SELECT COUNT(*) FROM dg_agents WHERE owner_user_id=?) +
     (SELECT COUNT(*) FROM dg_rules WHERE approver_id=?) +

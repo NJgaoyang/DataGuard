@@ -2,9 +2,9 @@
 import {computed,onMounted,ref,watch} from 'vue';
 import {api,stamp,match,page,fail,stateName,stateColor,type DataRow,type User} from '../api';
 const props=defineProps<{user:User;initialScope?:string;initialDetailId?:string}>();
-const tab=ref(props.initialScope||(props.user.roleCode==='READER'?'mine':'pending')),rows=ref<DataRow[]>([]),search=ref(''),detail=ref<DataRow|null>(null),approvalMode=ref(false),reason=ref(''),busy=ref(false),requestHelpOpen=ref(false),preapplyBusy=ref(false),preapplyAgents=ref<DataRow[]>([]),preapplyOptions=ref<DataRow[]>([]),preapplyLoading=ref(false),tableSearch=ref(''),preapplyForm=ref({agentId:'',sourceId:'',tableName:'',columns:[] as string[],requestedRows:50});
+const tab=ref(props.initialScope||(props.user.roleCode==='ADMIN'?'all':props.user.roleCode==='READER'?'mine':'pending')),rows=ref<DataRow[]>([]),search=ref(''),detail=ref<DataRow|null>(null),approvalMode=ref(false),reason=ref(''),busy=ref(false),requestHelpOpen=ref(false),preapplyBusy=ref(false),preapplyAgents=ref<DataRow[]>([]),preapplyOptions=ref<DataRow[]>([]),preapplyLoading=ref(false),tableSearch=ref(''),preapplyForm=ref({agentId:'',sourceId:'',tableName:'',columns:[] as string[],requestedRows:50});
 const filtered=computed(()=>rows.value.filter(r=>match(r,search.value,['id','requesterName','agentName','tableName','sourceName'])));
-const canApprove=computed(()=>detail.value?.status==='PENDING'&&detail.value.approverUsername===props.user.username
+const canApprove=computed(()=>detail.value?.status==='PENDING'&&(detail.value.approverUsername===props.user.username||props.user.roleCode==='ADMIN')
  &&detail.value.ownerUsername!==props.user.username&&new Date(detail.value.expiresAt).getTime()>Date.now());
 const preapplyEmptyReason=computed(()=>!preapplyForm.value.agentId?'请先选择 Agent':preapplyLoading.value?'正在读取授权信息':!preapplyOptions.value.length?'该 Agent 暂无有效的数据源、表和字段授权；请先在数据源和 Agent 管理中授权':'没有匹配的数据源');
 const sourceOptions=computed(()=>[...new Map(preapplyOptions.value.map(x=>[x.sourceId,{value:x.sourceId,label:x.sourceName}])).values()]);
@@ -32,7 +32,7 @@ async function submitPreapply(){try{
  const parts=[...preapplyForm.value.columns];
  if(!preapplyForm.value.agentId||!preapplyForm.value.sourceId||!preapplyForm.value.tableName||!parts.length)throw Error('请选择 Agent、数据源、数据表和至少一个字段');
  const result=await api<{id:string}>('/api/requests/preapply','POST',{...preapplyForm.value,columns:parts});
- requestHelpOpen.value=false;selectTab('mine');
+ requestHelpOpen.value=false;selectTab(props.user.roleCode==='ADMIN'?'all':'mine');
  const record=await api<DataRow>('/api/requests/'+result.id);detail.value=record;approvalMode.value=false;
 }catch(e){fail(e)}finally{preapplyBusy.value=false}}
 async function refresh(){try{rows.value=await api('/api/requests?scope='+tab.value)}catch(e){fail(e)}}
@@ -49,6 +49,7 @@ onMounted(async()=>{await refresh();if(props.initialDetailId){try{detail.value=a
  <div class="toolbar stack">
  <a-button type="primary" @click="openPreapply">＋ 发起访问申请</a-button>
  <a-radio-group :value="tab" button-style="solid" @change="selectTab($event.target.value)">
+  <a-radio-button v-if="user.roleCode==='ADMIN'" value="all">全部申请</a-radio-button>
   <a-radio-button v-if="user.roleCode!=='READER'" value="pending">待我审批</a-radio-button>
   <a-radio-button value="mine">我发起的</a-radio-button>
   <a-radio-button v-if="user.roleCode!=='READER'" value="handled">已处理</a-radio-button>
@@ -63,7 +64,7 @@ onMounted(async()=>{await refresh();if(props.initialDetailId){try{detail.value=a
   <a-table-column title="访问对象" data-index="tableName"/>
   <a-table-column title="申请行数" data-index="requestedRows"/>
   <a-table-column title="状态"><template #default="{record}"><a-tag :color="stateColor(record.status)">{{stateName[record.status]||record.status}}</a-tag></template></a-table-column>
-  <a-table-column title="操作" :width="190"><template #default="{record}"><a-space size="small" class="table-row-actions"><a-button class="row-view-btn" @click="detail=record;approvalMode=false;reason=''">查看</a-button><a-dropdown v-if="record.approverUsername===user.username&&record.status==='PENDING'" :trigger="['click']"><a-button class="row-more-btn">更多 <svg class="row-more-chevron" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></a-button><template #overlay><a-menu class="row-more-menu"><a-menu-item @click="detail=record;approvalMode=true;reason=''"><span class="row-menu-icon">◉</span>处理审批</a-menu-item></a-menu></template></a-dropdown></a-space></template></a-table-column>
+  <a-table-column title="操作" :width="190"><template #default="{record}"><a-space size="small" class="table-row-actions"><a-button class="row-view-btn" @click="detail=record;approvalMode=false;reason=''">查看</a-button><a-dropdown v-if="(record.approverUsername===user.username||user.roleCode==='ADMIN')&&record.ownerUsername!==user.username&&record.status==='PENDING'" :trigger="['click']"><a-button class="row-more-btn">更多 <svg class="row-more-chevron" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></a-button><template #overlay><a-menu class="row-more-menu"><a-menu-item @click="detail=record;approvalMode=true;reason=''"><span class="row-menu-icon">◉</span>处理审批</a-menu-item></a-menu></template></a-dropdown></a-space></template></a-table-column>
  </a-table>
 </section>
 <section v-else class="panel detail-page" aria-label="审批详情页面">

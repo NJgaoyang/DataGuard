@@ -73,8 +73,11 @@ class SourceApi {
  @org.springframework.transaction.annotation.Transactional
  Map<String,Object> deleteSource(Authentication auth,@PathVariable String id){
   Guard.admin(auth);String safe=Guard.id(id);
-  List<Map<String,Object>> existing=db.queryForList("SELECT id FROM dg_sources WHERE id=? FOR UPDATE",safe);
+  List<Map<String,Object>> existing=db.queryForList("SELECT id,enabled FROM dg_sources WHERE id=? FOR UPDATE",safe);
   if(existing.isEmpty())throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+  Object state=existing.get(0).get("enabled");
+  if(state instanceof Number ? ((Number)state).intValue()!=0 : Boolean.TRUE.equals(state))
+   throw new ResponseStatusException(HttpStatus.CONFLICT,"Disable data source before deletion");
   Long refs=db.queryForObject("SELECT (SELECT COUNT(*) FROM dg_requests WHERE source_id=?)+(SELECT COUNT(*) FROM dg_rules WHERE source_id=?)",Long.class,safe,safe);
   if(refs!=null&&refs>0)throw new ResponseStatusException(HttpStatus.CONFLICT,"Source has rules or historical requests; disable it instead");
   db.update("DELETE FROM dg_agent_columns WHERE source_id=?",safe);

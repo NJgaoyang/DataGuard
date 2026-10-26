@@ -304,7 +304,11 @@ class ControlApi {
  @Transactional
  public Map<String,Object> deleteRule(Authentication auth,@PathVariable String id){
   Guard.admin(auth);String safe=Guard.id(id);
-  if(db.queryForList("SELECT id FROM dg_rules WHERE id=? FOR UPDATE",safe).isEmpty())throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+  var existingRule=db.queryForList("SELECT id,enabled FROM dg_rules WHERE id=? FOR UPDATE",safe);
+  if(existingRule.isEmpty())throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+  Object ruleEnabled=existingRule.get(0).get("enabled");
+  if(ruleEnabled instanceof Number ? ((Number)ruleEnabled).intValue()!=0 : Boolean.TRUE.equals(ruleEnabled))
+   throw new ResponseStatusException(HttpStatus.CONFLICT,"Disable rule before deletion");
   Long refs=db.queryForObject("SELECT COUNT(*) FROM dg_requests WHERE rule_id=?",Long.class,safe);
   if(refs!=null&&refs>0)throw new ResponseStatusException(HttpStatus.CONFLICT,"Rule has historical requests; disable instead");
   db.update("DELETE FROM dg_rules WHERE id=?",safe);
@@ -451,7 +455,7 @@ class ControlApi {
    """,auth.getName(),safe);
   if(rows.size()!=1||!"PENDING".equals(rows.get(0).get("status")))throw new ResponseStatusException(HttpStatus.CONFLICT,"Request unavailable");
   Map<String,Object> req=rows.get(0);
-  if(!req.get("approverId").equals(req.get("reviewerId"))||req.get("ownerId").equals(req.get("reviewerId")))
+  if((!auth.getAuthorities().stream().anyMatch(a->a.getAuthority().equals("ROLE_ADMIN"))&&!req.get("approverId").equals(req.get("reviewerId")))||req.get("ownerId").equals(req.get("reviewerId")))
    throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Only assigned independent reviewer may decide");
   Integer stillValid=db.queryForObject(
     "SELECT COUNT(*) FROM dg_requests WHERE id=? AND expires_at>NOW(3)",Integer.class,safe);
