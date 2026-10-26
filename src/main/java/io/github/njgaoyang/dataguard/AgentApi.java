@@ -101,6 +101,26 @@ class AgentApi {
   audit.log(auth.getName(),enabled?"AGENT_DISABLED":"AGENT_ENABLED",null,safe,"SUCCESS","");
   return Map.of("enabled",!enabled);
  }
+ /** Reactivation never revives a revoked secret: issue a new one-time token. */
+ @PostMapping("/{id}/reactivate")
+ @org.springframework.transaction.annotation.Transactional
+ Map<String,Object> reactivate(Authentication auth,@PathVariable String id,@RequestBody Rotate request){
+  Guard.admin(auth);String safe=Guard.id(id);
+  if(request==null||request.expiresAt()==null)throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Expiry required");
+  java.time.LocalDateTime expires;
+  try{expires=java.time.LocalDateTime.parse(request.expiresAt());}
+  catch(java.time.format.DateTimeParseException ex){throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid expiry");}
+  if(!expires.isAfter(java.time.LocalDateTime.now())||expires.isAfter(java.time.LocalDateTime.of(2099,12,31,23,59,59)))
+   throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid expiry");
+  var rows=db.queryForList("SELECT revoked_at FROM dg_agents WHERE id=? FOR UPDATE",safe);
+  if(rows.isEmpty())throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+  if(rows.get(0).get("revoked_at")==null)throw new ResponseStatusException(HttpStatus.CONFLICT,"Agent is not revoked; use enable instead");
+  String token=newToken();
+  db.update("UPDATE dg_agents SET token_hash=?,expires_at=?,revoked_at=NULL,enabled=1 WHERE id=?",
+   digest(token),java.sql.Timestamp.valueOf(expires),safe);
+  audit.log(auth.getName(),"AGENT_REACTIVATED",null,safe,"SUCCESS","New token issued; old token invalid");
+  return Map.of("id",safe,"token",token);
+ }
  @PostMapping("/{id}/revoke") Map<String,Object> revoke(Authentication auth,@PathVariable String id){
   own(auth,id);db.update("UPDATE dg_agents SET revoked_at=NOW(3),enabled=0 WHERE id=?",Guard.id(id));
   audit.log(auth.getName(),"AGENT_REVOKED",null,id,"SUCCESS","");
