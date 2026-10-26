@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="465" height="430" viewBox="0 0 465 430" role="img" aria-labelledby="arttitle">
+<title id="arttitle">蓝色数据库与透明安全盾牌</title>
+<defs>
+ <linearGradient id="platform-top" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff"/><stop offset=".55" stop-color="#e4f1ff"/><stop offset="1" stop-color="#b3d5ff"/></linearGradient>
+ <linearGradient id="platform-side" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#cae2ff"/><stop offset="1" stop-color="#81b4f7"/></linearGradient>
+ <linearGradient id="platform-edge" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#b1d7ff"/><stop offset="1" stop-color="#5e9fee"/></linearGradient>
+ <linearGradient id="shield" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff" stop-opacity=".90"/><stop offset=".52" stop-color="#d5edff" stop-opacity=".50"/><stop offset="1" stop-color="#74b4ff" stop-opacity=".40"/></linearGradient>
+ <linearGradient id="shieldrim" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff"/><stop offset=".5" stop-color="#b2daff"/><stop offset="1" stop-color="#5ca6ff"/></linearGradient>
+ <linearGradient id="db" x1="0" y1="0" x2="1" y2=".1"><stop stop-color="#58ccff"/><stop offset=".3" stop-color="#2692fa"/><stop offset=".75" stop-color="#196ce6"/><stop offset="1" stop-color="#0c4fbf"/></linearGradient>
+ <linearGradient id="lid" x1=".1" y1="0" x2=".85" y2="1"><stop stop-color="#fff"/><stop offset=".65" stop-color="#e1f3ff"/><stop offset="1" stop-color="#8cc5ff"/></linearGradient>
+ <linearGradient id="cube" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#d8f2ff"/><stop offset=".55" stop-color="#8ccaff"/><stop offset="1" stop-color="#438ffa"/></linearGradient>
+ <linearGradient id="cubel" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#7cc9ff"/><stop offset="1" stop-color="#3e86ee"/></linearGradient>
+ <linearGradient id="cuber" x1="0" y1="0" x2=".8" y2="1"><stop stop-color="#388afa"/><stop offset="1" stop-color="#1b5cce"/></linearGradient>
+ <radialGradient id="halo"><stop stop-color="#98c9ff" stop-opacity=".30"/><stop offset="1" stop-color="#98c9ff" stop-opacity="0"/></radialGradient>
+ <filter id="glow" x="-50%" y="-60%" width="200%" height="220%"><feGaussianBlur stdDeviation="8"/></filter>
+</defs>
+<!-- No background rectangle: fully transparent canvas for pale blue login panel. -->
+<ellipse cx="235" cy="334" rx="215" ry="86" fill="url(#halo)"/>
+<g fill="none" stroke="#96c6ff" opacity=".59" stroke-width="1.2" transform="rotate(-10 234 335)">
+ <ellipse cx="234" cy="335" rx="204" ry="65"/><ellipse cx="234" cy="335" rx="162" ry="50"/>
+ <ellipse cx="234" cy="335" rx="125" ry="34"/>
+</g>
+<g fill="#81bcff" opacity=".85"><circle cx="47" cy="315" r="3"/><circle cx="127" cy="368" r="2.4"/><circle cx="373" cy="261" r="2.7"/><circle cx="421" cy="345" r="2.5"/></g>
+<!-- Grounded, low-contrast isometric platform -->
+<path d="M126 318 L238 260 L360 316 L245 375 Z" fill="#6ca5ed" opacity=".20" filter="url(#glow)"/>
+<path d="M97 309 L233 242 L372 308 L237 378 Z" fill="url(#platform-top)" stroke="#c6e1ff" stroke-width="2"/>
+<path d="M97 309 L237 378 L237 395 L97 326 Z" fill="url(#platform-side)"/>
+<path d="M237 378 L372 308 L372 326 L237 395 Z" fill="url(#platform-edge)"/>
+<path d="M107 309 L234 249 L361 309 L237 370 Z" fill="#f7fbff" fill-opacity=".75" stroke="#d2e8ff"/>
+<path d="M131 304 L234 255 L339 304 L237 355 Z" fill="#eaf6ff" fill-opacity=".56" stroke="#c1dcff" stroke-opacity=".8"/>
+<!-- Soft protective shield, clear glossy outline -->
+<path d="M235 65 L331 111 V234 C331 287 297 323 235 353 C173 323 139 287 139 234 V111 Z" fill="#95c7ff" opacity=".16" filter="url(#glow)"/>
+<path d="M235 62 L334 108 V231 C334 282 300 324 235 356 C170 324 136 282 136 231 V108 Z" fill="url(#shield)" stroke="url(#shieldrim)" stroke-width="3.2"/>
+<path d="M235 78 L319 119 V229 C319 273 290 312 235 340 C180 312 151 273 151 229 V119 Z" fill="#fff" fill-opacity=".13" stroke="#fff" stroke-opacity=".65" stroke-width="1.5"/>
+<path d="M235 64 V355" stroke="#fff" stroke-opacity=".49" stroke-width="1.4"/>
+<path d="M151 120 L235 78 V338 C182 310 151 272 151 229 Z" fill="#fff" fill-opacity=".14"/>
+<!-- Bright blue database cylinder with three visible bands -->
+<ellipse cx="236" cy="164" rx="67" ry="25" fill="#82bffa" opacity=".2"/>
+<path d="M169 169 V260 C169 278 199 291 236 291 C273 291 303 278 303 260 V169 Z" fill="url(#db)"/>
+<ellipse cx="236" cy="170" rx="67" ry="25" fill="url(#lid)" stroke="#fff" stroke-width="3"/>
+<path d="M169 202 C169 220 199 233 236 233 C273 233 303 220 303 202" fill="none" stroke="#ecf8ff" stroke-width="9" stroke-opacity=".97"/>
+<path d="M169 242 C169 260 199 272 236 272 C273 272 303 260 303 242" fill="none" stroke="#e7f7ff" stroke-width="9" stroke-opacity=".95"/>
+<path d="M180 186 V262" stroke="#a9eaff" stroke-opacity=".37" stroke-width="4"/>
+<ellipse cx="236" cy="170" rx="63" ry="21" fill="none" stroke="#fff" stroke-opacity=".60" stroke-width="1.8"/>
+<!-- Floating mini cubes -->
+<g transform="translate(66 229)">
+ <path d="M0 11 L16 2 L32 11 L16 21 Z" fill="url(#cube)" stroke="#dff3ff"/>
+ <path d="M0 11 L16 21 V40 L0 30 Z" fill="url(#cubel)"/>
+ <path d="M16 21 L32 11 V30 L16 40 Z" fill="url(#cuber)"/>
+</g>
+<g transform="translate(362 195) scale(.88)">
+ <path d="M0 11 L16 2 L32 11 L16 21 Z" fill="url(#cube)" stroke="#e6f7ff"/>
+ <path d="M0 11 L16 21 V40 L0 30 Z" fill="url(#cubel)"/>
+ <path d="M16 21 L32 11 V30 L16 40 Z" fill="url(#cuber)"/>
+</g>
+<g transform="translate(95 335) scale(.66)">
+ <path d="M0 11 L16 2 L32 11 L16 21 Z" fill="url(#cube)" stroke="#fff"/>
+ <path d="M0 11 L16 21 V40 L0 30 Z" fill="url(#cubel)"/>
+ <path d="M16 21 L32 11 V30 L16 40 Z" fill="url(#cuber)"/>
+</g>
+</svg>

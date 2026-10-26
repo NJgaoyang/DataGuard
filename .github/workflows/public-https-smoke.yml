@@ -1,0 +1,31 @@
+name: DataGuard Public HTTPS Smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/ai-access-gateway-v1]
+    paths:
+      - "deploy/public/**"
+      - ".github/workflows/public-https-smoke.yml"
+
+jobs:
+  public-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Check public IP TLS certificate and HTTP routes
+        shell: bash
+        run: |
+          set -euo pipefail
+          host="https://110.42.132.44"
+          for attempt in 1 2 3; do
+            if curl --fail --silent --show-error --connect-timeout 7 --max-time 15 "$host/actuator/health" -o health.json; then
+              break
+            fi
+            sleep 3
+          done
+          grep -q '"status":"UP"' health.json
+          test "$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 "$host/")" = 200
+          test "$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 "$host/api/sources")" = 401
+          test "$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"initialize"}' "$host/mcp")" = 401
+          echo "Externally verified: HTTPS 200, healthy app, API+MCP protected."

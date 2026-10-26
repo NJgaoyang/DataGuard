@@ -1,0 +1,53 @@
+name: DataGuard CI
+on:
+  push:
+    branches: [main, feature/ai-access-gateway-v1]
+  pull_request:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_DATABASE: dataguard
+          MYSQL_USER: dataguard
+          MYSQL_PASSWORD: test-password-only
+          MYSQL_ROOT_PASSWORD: root-password-only
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -proot-password-only"
+          --health-interval=10s --health-timeout=5s --health-retries=12
+    env:
+      DG_MYSQL_URL: jdbc:mysql://127.0.0.1:3306/dataguard?sslMode=REQUIRED
+      DG_MYSQL_USER: dataguard
+      DG_MYSQL_PASSWORD: test-password-only
+      DG_INITIAL_ADMIN_PASSWORD: DevOnly-Test1!Change
+      DG_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install frontend dependencies
+        run: cd frontend && npm install --no-audit --no-fund
+      - name: Type check and build frontend
+        run: cd frontend && npm run build
+      - name: Maven verification
+        run: mvn -B -ntp clean verify
+      - name: Install Chromium for browser acceptance
+        run: cd frontend && npx playwright install --with-deps chromium
+      - name: Browser acceptance and UI screenshots
+        run: cd frontend && npx playwright test
+      - name: Upload reviewed UI screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dataguard-v1-ui-screenshots
+          path: frontend/test-results/
+          if-no-files-found: ignore

@@ -1,0 +1,11 @@
+target/
+node_modules/
+frontend/dist/
+*.log
+.env
+.idea/
+.DS_Store
+
+# Generated executable and web UI assets
+app.jar
+src/main/resources/static/

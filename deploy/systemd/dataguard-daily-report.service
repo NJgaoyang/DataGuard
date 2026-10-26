@@ -1,0 +1,6 @@
+[Unit]
+Description=Daily DataGuard uptime summary
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/local/sbin/dataguard-daily-report
