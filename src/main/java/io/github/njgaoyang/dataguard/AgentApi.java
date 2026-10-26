@@ -41,7 +41,11 @@ class AgentApi {
   String q="""
    SELECT a.id,a.name,a.enabled,a.expires_at AS expiresAt,a.revoked_at AS revokedAt,
      a.created_at AS createdAt,owner.id AS ownerId,owner.display_name AS ownerName,
-     (SELECT MAX(r.created_at) FROM dg_requests r WHERE r.agent_id=a.id) AS lastAccess
+     (SELECT MAX(r.created_at) FROM dg_requests r WHERE r.agent_id=a.id) AS lastAccess,
+     CASE WHEN a.enabled=0 AND
+       NOT EXISTS(SELECT 1 FROM dg_requests h WHERE h.agent_id=a.id) AND
+       NOT EXISTS(SELECT 1 FROM dg_rules rule WHERE rule.agent_id=a.id)
+       THEN 1 ELSE 0 END AS canDelete
    FROM dg_agents a JOIN dg_users owner ON owner.id=a.owner_user_id
    """+filter+" ORDER BY a.created_at DESC LIMIT 300";
   return admin(auth)?db.queryForList(q):db.queryForList(q,auth.getName());
