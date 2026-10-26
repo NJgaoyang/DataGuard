@@ -129,6 +129,41 @@ class AuthApi {
   if(updated!=1)throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Cannot edit protected user");
   audit.log(auth.getName(),"USER_UPDATED",null,safe,"SUCCESS","Profile and role updated");return Map.of("updated",true);
  }
+ @DeleteMapping("/api/users/{id}")
+ @org.springframework.transaction.annotation.Transactional
+ Map<String,Object> deleteUser(Authentication auth,@PathVariable String id){
+  Guard.admin(auth);String safe=Guard.id(id);
+  List<Map<String,Object>> found=db.queryForList("SELECT username FROM dg_users WHERE id=? FOR UPDATE",safe);
+  if(found.isEmpty())throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+  String username=String.valueOf(found.get(0).get("username"));
+  if("admin".equals(username)||username.equals(auth.getName()))throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Protected account");
+  Long refs=db.queryForObject("""
+   SELECT (SELECT COUNT(*) FROM dg_agents WHERE owner_user_id=?) +
+    (SELECT COUNT(*) FROM dg_rules WHERE approver_id=?) +
+    (SELECT COUNT(*) FROM dg_requests WHERE owner_id=? OR approver_id=?)
+   """,Long.class,safe,safe,safe,safe);
+  if(refs!=null&&refs>0)throw new ResponseStatusException(HttpStatus.CONFLICT,"User has Agent, rule, or approval history; disable instead");
+  db.update("DELETE FROM dg_users WHERE id=?",safe);
+  audit.log(auth.getName(),"USER_DELETED",null,safe,"SUCCESS","User deleted without references");
+  return Map.of("deleted",true);
+ }
+ @GetMapping("/api/security/settings") Map<String,Integer> securitySettings(Authentication auth){
+  Guard.admin(auth);return Map.of(
+   "agentCallsPerMinute",db.queryForObject("SELECT setting_value FROM dg_security_settings WHERE setting_key='agent_calls_per_minute'",Integer.class),
+   "agentRowsPerMinute",db.queryForObject("SELECT setting_value FROM dg_security_settings WHERE setting_key='agent_rows_per_minute'",Integer.class));
+ }
+ record SecuritySettings(Integer agentCallsPerMinute,Integer agentRowsPerMinute){}
+ @PutMapping("/api/security/settings") Map<String,Object> changeSecuritySettings(Authentication auth,@RequestBody SecuritySettings body){
+  Guard.admin(auth);
+  if(body==null||body.agentCallsPerMinute()==null||body.agentRowsPerMinute()==null||
+    body.agentCallsPerMinute()<1||body.agentCallsPerMinute()>60||
+    body.agentRowsPerMinute()<1||body.agentRowsPerMinute()>3000)
+   throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Security quota must not exceed defaults");
+  db.update("UPDATE dg_security_settings SET setting_value=? WHERE setting_key='agent_calls_per_minute'",body.agentCallsPerMinute());
+  db.update("UPDATE dg_security_settings SET setting_value=? WHERE setting_key='agent_rows_per_minute'",body.agentRowsPerMinute());
+  audit.log(auth.getName(),"SECURITY_SETTINGS_UPDATED",null,"agent-quotas","SUCCESS","Agent quota updated");
+  return Map.of("updated",true);
+ }
  @PostMapping("/api/users/{id}/toggle") Map<String,Object> toggle(Authentication auth,@PathVariable String id){
   Guard.admin(auth);String safe=Guard.id(id);
   int n=db.update("UPDATE dg_users SET enabled=NOT enabled WHERE id=? AND username<>'admin' AND username<>?",safe,auth.getName());

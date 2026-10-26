@@ -22,6 +22,11 @@ import org.springframework.web.server.ResponseStatusException;
 @EnableScheduling
 class SecurityControls {
  private final JdbcTemplate db;
+ int setting(String key,int fallback){
+  List<Integer> values=db.query("SELECT setting_value FROM dg_security_settings WHERE setting_key=?",(rs,i)->rs.getInt(1),key);
+  return values.isEmpty()?fallback:values.get(0);
+ }
+
  SecurityControls(JdbcTemplate db){this.db=db;}
 
  // Per username to prevent password guessing while avoiding shared reverse-proxy-IP lockouts.
@@ -70,10 +75,10 @@ class SecurityControls {
     FROM dg_agent_minute_usage
     WHERE agent_id=? AND minute_bucket=DATE_FORMAT(NOW(),'%Y-%m-%d %H:%i:00')
     """,id);
-  if(((Number)current.get("calls")).intValue()>60||
-      ((Number)current.get("requestedRows")).intValue()>3000)
+  if(((Number)current.get("calls")).intValue()>setting("agent_calls_per_minute",60)||
+      ((Number)current.get("requestedRows")).intValue()>setting("agent_rows_per_minute",3000))
    throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
-     "Agent quota exceeded: 60 calls and 3000 requested rows per minute");
+     "Agent quota exceeded");
  }
  @Scheduled(fixedDelay=3_600_000,initialDelay=3_600_000)
  void purgeOldCounters(){

@@ -67,6 +67,19 @@ class AgentApi {
   List<String> owners=db.query("SELECT owner.username FROM dg_agents a JOIN dg_users owner ON owner.id=a.owner_user_id WHERE a.id=?",(rs,i)->rs.getString(1),Guard.id(agent));
   if(owners.size()!=1||(!admin(auth)&&!auth.getName().equals(owners.get(0))))throw new ResponseStatusException(HttpStatus.FORBIDDEN);
  }
+ @DeleteMapping("/{id}")
+ @org.springframework.transaction.annotation.Transactional
+ Map<String,Object> deleteAgent(Authentication auth,@PathVariable String id){
+  Guard.admin(auth);String safe=Guard.id(id);
+  if(db.queryForList("SELECT id FROM dg_agents WHERE id=? FOR UPDATE",safe).isEmpty())throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+  Number refs=db.queryForObject("SELECT (SELECT COUNT(*) FROM dg_requests WHERE agent_id=?)+(SELECT COUNT(*) FROM dg_rules WHERE agent_id=?)",Long.class,safe,safe);
+  if(refs!=null&&refs.longValue()>0)throw new ResponseStatusException(HttpStatus.CONFLICT,"Agent has historical requests or rules; revoke instead");
+  db.update("DELETE FROM dg_agent_columns WHERE agent_id=?",safe);
+  db.update("DELETE FROM dg_agent_tables WHERE agent_id=?",safe);
+  db.update("DELETE FROM dg_agents WHERE id=?",safe);
+  audit.log(auth.getName(),"AGENT_DELETED",null,safe,"SUCCESS","No historical references");
+  return Map.of("deleted",true);
+ }
  @PostMapping("/{id}/revoke") Map<String,Object> revoke(Authentication auth,@PathVariable String id){
   own(auth,id);db.update("UPDATE dg_agents SET revoked_at=NOW(3),enabled=0 WHERE id=?",Guard.id(id));
   audit.log(auth.getName(),"AGENT_REVOKED",null,id,"SUCCESS","");

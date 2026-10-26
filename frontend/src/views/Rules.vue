@@ -23,6 +23,7 @@ async function save(){try{
   columnName:form.value.columnName||null,approverId:form.value.action==='APPROVAL'?form.value.approverId:null});
  createOpen.value=false;await refresh();
  }catch(e){fail(e)}finally{busy.value=false}}
+async function deleteRule(row:DataRow){try{await api('/api/rules/'+row.id,'DELETE');if(selected.value?.id===row.id)selected.value=null;await refresh()}catch(e){fail(e)}}
 async function toggleSelected(){if(selected.value)await toggle(selected.value)}
 async function toggle(row:DataRow){try{await api('/api/rules/'+row.id+'/toggle','POST');selected.value=null;await refresh()}catch(e){fail(e)}}
 const condition=(row:DataRow)=>'读取 '+row.minRows+'～'+row.maxRows+' 行'+(row.columnName?' · '+row.columnName:'');
@@ -40,7 +41,7 @@ onMounted(()=>void refresh());defineExpose({refresh});
  <a-table-column title="动作"><template #default="{record}"><a-tag :color="record.action==='ALLOW'?'green':record.action==='APPROVAL'?'orange':'red'">{{labels[record.action]}}</a-tag></template></a-table-column>
  <a-table-column title="状态"><template #default="{record}"><a-tag :color="record.enabled?'green':'default'">{{record.enabled?'正常':'已停用'}}</a-tag></template></a-table-column>
  <a-table-column title="优先级" data-index="priority"/>
- <a-table-column title="操作" :width="220"><template #default="{record}"><a-space size="small"><a-button type="link" @click="selected=record">查看</a-button><a-button type="link" @click="edit(record)">编辑</a-button><a-button type="link" :danger="record.enabled" @click="confirm('确认变更规则状态？此操作会使关联待审批授权失效。',()=>toggle(record))">{{record.enabled?'停用':'启用'}}</a-button></a-space></template></a-table-column>
+ <a-table-column title="操作" :width="295"><template #default="{record}"><a-space size="small"><a-button type="link" @click="selected=record">查看</a-button><a-button type="link" @click="edit(record)">编辑</a-button><a-button type="link" :danger="record.enabled" @click="confirm('确认变更规则状态？此操作会使关联待审批授权失效。',()=>toggle(record))">{{record.enabled?'停用':'启用'}}</a-button><a-button type="link" danger @click="confirm('确定永久删除访问规则「'+record.name+'」？此操作不可恢复；有审批或访问历史的规则只能停用。',()=>deleteRule(record))">删除</a-button></a-space></template></a-table-column>
  </a-table></section>
  <section v-else class="panel detail-page" aria-label="规则详情页面">
  <teleport to="#workspace-actions"><a-button @click="selected=null">返回规则列表</a-button></teleport>

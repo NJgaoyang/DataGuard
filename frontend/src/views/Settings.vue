@@ -3,12 +3,15 @@ import {computed,onMounted,ref,watch} from 'vue';
 import {api,fail,match,page,confirm,type DataRow,type User} from '../api';
 const props=defineProps<{user:User}>();
 const emit=defineEmits<{changePassword:[]}>();
-const active=ref('profile'),rows=ref<DataRow[]>([]),search=ref(''),createOpen=ref(false),userDetail=ref<DataRow|null>(null),userDetailOpen=ref(false),editUserId=ref(''),
+const active=ref('profile'),rows=ref<DataRow[]>([]),search=ref(''),createOpen=ref(false),userDetail=ref<DataRow|null>(null),userDetailOpen=ref(false),editUserId=ref(''),security=ref({agentCallsPerMinute:60,agentRowsPerMinute:3000}),securityBusy=ref(false),
  form=ref({username:'',displayName:'',roleCode:'READER',password:''});
+async function loadSecurity(){try{security.value=await api('/api/security/settings')}catch(e){fail(e)}}
+async function saveSecurity(){try{securityBusy.value=true;await api('/api/security/settings','PUT',security.value);await loadSecurity()}catch(e){fail(e)}finally{securityBusy.value=false}}
+async function deleteUser(row:DataRow){try{await api('/api/users/'+row.id,'DELETE');await refresh()}catch(e){fail(e)}}
 const filtered=computed(()=>rows.value.filter(r=>match(r,search.value,['username','displayName'])));
 const ops=ref<DataRow|null>(null),opsBusy=ref(false);
 async function loadOps(){try{opsBusy.value=true;ops.value=await api('/api/ops/overview')}catch(e){fail(e)}finally{opsBusy.value=false}}
-watch(active,next=>{if(next==='ops')void loadOps()});
+watch(active,next=>{if(next==='ops')void loadOps();if(next==='security')void loadSecurity()});
 async function refresh(){if(props.user.roleCode==='ADMIN')try{rows.value=await api('/api/users')}catch(e){fail(e)}}
 async function save(){try{if(editUserId.value)await api('/api/users/'+editUserId.value,'PUT',{displayName:form.value.displayName,roleCode:form.value.roleCode});else await api('/api/users','POST',form.value);createOpen.value=false;await refresh()}catch(e){fail(e)}}
 function editUser(row:DataRow){editUserId.value=row.id;form.value={username:row.username,displayName:row.displayName,roleCode:row.roleCode,password:''};createOpen.value=true}
@@ -38,10 +41,16 @@ onMounted(()=>void refresh());defineExpose({refresh});
     <a-table-column title="姓名" data-index="displayName"/><a-table-column title="用户名" data-index="username"/>
     <a-table-column title="角色"><template #default="{record}">{{record.roleCode==='ADMIN'?'管理员':record.roleCode==='APPROVER'?'审批人':'普通用户'}}</template></a-table-column>
     <a-table-column title="状态"><template #default="{record}"><a-tag :color="record.enabled?'green':'red'">{{record.enabled?'正常':'停用'}}</a-tag></template></a-table-column>
-    <a-table-column title="操作" :width="230"><template #default="{record}"><a-space size="small"><a-button type="link" @click="userDetail=record;userDetailOpen=true">查看</a-button><a-button type="link" :disabled="record.username==='admin'||record.username===user.username" @click="editUser(record)">编辑</a-button><a-button type="link" :danger="record.enabled" :disabled="record.username==='admin'||record.username===user.username" @click="confirm('确认变更此用户状态？',()=>toggle(record))">{{record.enabled?'停用':'启用'}}</a-button></a-space></template></a-table-column>
+    <a-table-column title="操作" :width="300"><template #default="{record}"><a-space size="small"><a-button type="link" @click="userDetail=record;userDetailOpen=true">查看</a-button><a-button type="link" :disabled="record.username==='admin'||record.username===user.username" @click="editUser(record)">编辑</a-button><a-button type="link" :danger="record.enabled" :disabled="record.username==='admin'||record.username===user.username" @click="confirm('确认变更此用户状态？',()=>toggle(record))">{{record.enabled?'停用':'启用'}}</a-button><a-button type="link" danger :disabled="record.username==='admin'||record.username===user.username" @click="confirm('永久删除用户「'+record.username+'」？不可恢复，有关联 Agent 或审批历史时系统会拒绝，请停用。',()=>deleteUser(record))">删除</a-button></a-space></template></a-table-column>
    </a-table></section></a-tab-pane>
   <a-tab-pane v-if="user.roleCode==='ADMIN'" key="security" tab="安全参数">
    <section class="panel"><div class="panel-head"><h2>安全参数</h2></div>
+    <a-form layout="vertical" style="padding:14px;max-width:480px">
+     <a-form-item label="每 Agent 每分钟最大调用次数（1～60）"><a-input-number v-model:value="security.agentCallsPerMinute" :min="1" :max="60" style="width:180px"/></a-form-item>
+     <a-form-item label="每 Agent 每分钟累计申请行数（1～3000）"><a-input-number v-model:value="security.agentRowsPerMinute" :min="1" :max="3000" style="width:180px"/></a-form-item>
+     <a-button type="primary" :loading="securityBusy" @click="saveSecurity">保存安全参数</a-button>
+     <p class="subtle" style="margin-top:12px">安全参数只允许收紧默认限额，保存后对后续 MCP 请求立即生效。</p>
+    </a-form>
     <a-descriptions :column="1" bordered style="padding:14px">
      <a-descriptions-item label="数据库访问">仅 MySQL / StarRocks 只读账号</a-descriptions-item>
      <a-descriptions-item label="授权方式">平台表字段白名单 ∩ Agent 授权</a-descriptions-item>

@@ -300,6 +300,16 @@ class ControlApi {
   audit.log(auth.getName(),"RULE_UPDATED",null,safe,"SUCCESS","");
   return Map.of("updated",true);
  }
+ @DeleteMapping("/rules/{id}")
+ @Transactional
+ public Map<String,Object> deleteRule(Authentication auth,@PathVariable String id){
+  Guard.admin(auth);String safe=Guard.id(id);
+  if(db.queryForList("SELECT id FROM dg_rules WHERE id=? FOR UPDATE",safe).isEmpty())throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+  Long refs=db.queryForObject("SELECT COUNT(*) FROM dg_requests WHERE rule_id=?",Long.class,safe);
+  if(refs!=null&&refs>0)throw new ResponseStatusException(HttpStatus.CONFLICT,"Rule has historical requests; disable instead");
+  db.update("DELETE FROM dg_rules WHERE id=?",safe);
+  audit.log(auth.getName(),"RULE_DELETED",null,safe,"SUCCESS","No historical references");return Map.of("deleted",true);
+ }
  @PostMapping("/rules/{id}/toggle")
  @Transactional
  public Map<String,Object> toggle(Authentication auth,@PathVariable String id){
