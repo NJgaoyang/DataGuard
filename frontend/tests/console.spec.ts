@@ -126,6 +126,8 @@ test('mobile navigation is usable',async({page})=>{
 test('authenticated console uses a compact shared layout on every page',async({page})=>{
  await expect(page.locator('.topbar')).toBeVisible();
  const bar=await page.locator('.topbar').boundingBox();
+ const tabBar=await page.locator('.console-tabs').boundingBox();
+ expect(tabBar!.height).toBeLessThanOrEqual(36);
  const heading=await page.locator('.workspace-head').boundingBox();
  const firstCard=await page.locator('.metric').first().boundingBox();
  expect(bar!.height).toBeLessThanOrEqual(54);
@@ -135,7 +137,7 @@ test('authenticated console uses a compact shared layout on every page',async({p
   await navigate(page,label);
   await expect(page.locator('.workspace-head')).toBeVisible();
   const ws=await page.locator('.workspace').evaluate(el=>parseFloat(getComputedStyle(el).paddingTop));
-  expect(ws).toBeLessThanOrEqual(70);
+  expect(ws).toBeLessThanOrEqual(105); // 52px top bar + 35px tabs + 14px content gap
  }
 });
 
