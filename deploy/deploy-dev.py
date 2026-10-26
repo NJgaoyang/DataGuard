@@ -4,6 +4,7 @@ Run as root AFTER building frontend and Maven jar. Never prints passwords.
 Not a production deployment script.
 """
 import base64
+import grp
 import os
 import pathlib
 import secrets
@@ -50,7 +51,13 @@ if not store.exists():
   "/opt/mcp-dataguard-work/secure-test-secrets/mysql84/tls/ca.pem",
   "-keystore",str(store),"-storetype","PKCS12","-storepass","changeit"
  ],check=True,stdout=subprocess.DEVNULL)
-store.chmod(0o644)
+# The service runs as dataguard and needs only read access to the CA truststore.
+# All password and encryption-key files remain root-only.
+gid=grp.getgrnam("dataguard").gr_gid
+os.chown(cfg,-1,gid)
+cfg.chmod(0o750)
+os.chown(store,-1,gid)
+store.chmod(0o640)
 values={
  "DG_BIND":"127.0.0.1",
  "DG_PORT":"8080",
@@ -60,7 +67,10 @@ values={
  "DG_MYSQL_PASSWORD":password,
  "DG_ENCRYPTION_KEY":master,
  "DG_INITIAL_ADMIN_PASSWORD":first,
- "DG_ALLOWED_SOURCE_HOSTS":"127.0.0.1,localhost"
+ "DG_ALLOWED_SOURCE_HOSTS":"127.0.0.1,localhost",
+ "DG_ALLOW_INSECURE_LOOPBACK_STARROCKS":"true",
+ "DG_SOURCE_TRUSTSTORE_URL":"file:/etc/dataguard-new/mysql-trust.p12",
+ "DG_SOURCE_TRUSTSTORE_PASSWORD":"changeit"
 }
 with envfile.open("w") as f:
  for k,v in values.items():

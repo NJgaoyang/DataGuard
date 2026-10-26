@@ -14,10 +14,19 @@ import org.springframework.web.server.ResponseStatusException;
 class SourceApi {
  private final JdbcTemplate db;private final Crypto crypto;private final Audit audit;
  private final java.util.Set<String> allowedHosts;
+ private final boolean allowInsecureLoopbackStarRocks;
+ private final String sourceTruststoreUrl;
+ private final String sourceTruststorePassword;
  SourceApi(JdbcTemplate db,Crypto crypto,Audit audit,
-    @org.springframework.beans.factory.annotation.Value("${dataguard.allowed-source-hosts:}") String hosts){
+    @org.springframework.beans.factory.annotation.Value("${dataguard.allowed-source-hosts:}") String hosts,
+    @org.springframework.beans.factory.annotation.Value("${dataguard.allow-insecure-loopback-starrocks:false}") boolean allowInsecureLoopbackStarRocks,
+    @org.springframework.beans.factory.annotation.Value("${dataguard.source-truststore-url:}") String sourceTruststoreUrl,
+    @org.springframework.beans.factory.annotation.Value("${dataguard.source-truststore-password:}") String sourceTruststorePassword){
   this.db=db;this.crypto=crypto;this.audit=audit;
   this.allowedHosts=new java.util.HashSet<>(java.util.Arrays.stream(hosts.split(",")).map(String::trim).filter(s->!s.isBlank()).toList());
+  this.allowInsecureLoopbackStarRocks=allowInsecureLoopbackStarRocks;
+  this.sourceTruststoreUrl=sourceTruststoreUrl;
+  this.sourceTruststorePassword=sourceTruststorePassword;
  }
  record Input(String name,String type,String host,Integer port,String databaseName,String username,String password){}
  record Grant(String name){}
@@ -86,9 +95,7 @@ class SourceApi {
   if(!allowedHosts.contains(host))throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Source host is not approved");
   java.util.Map<String,Map<String,Object>> grants=new java.util.HashMap<>();
   for(Map<String,Object> grant:columns(auth,id,table))grants.put(String.valueOf(grant.get("columnName")),grant);
-  String jdbcUrl="jdbc:mysql://"+host+":"+source.get("port")+"/"+
-    Guard.identifier(String.valueOf(source.get("databaseName")))+
-    "?sslMode=VERIFY_IDENTITY&connectTimeout=3000&socketTimeout=6000";
+  String jdbcUrl=jdbcUrlFor(source);
   List<Map<String,Object>> result=new java.util.ArrayList<>();
   try(var connection=java.sql.DriverManager.getConnection(jdbcUrl,
       String.valueOf(source.get("username")),decryptPassword(source))){
@@ -131,6 +138,21 @@ class SourceApi {
   if(n!=1)throw new ResponseStatusException(HttpStatus.NOT_FOUND,"Authorized field required");
   audit.log(auth.getName(),"COLUMN_MASK_CHANGED",null,source+"/"+name+"/"+col,"SUCCESS","");
   return Map.of("updated",true);
+ }
+ String jdbcUrlFor(Map<String,Object> source){
+  String host=String.valueOf(source.get("host"));
+  if(!allowedHosts.contains(host))
+   throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Source host is not approved");
+  String type=String.valueOf(source.get("type"));
+  boolean loopback=java.util.Set.of("127.0.0.1","localhost").contains(host);
+  boolean insecureStarRocks=allowInsecureLoopbackStarRocks&&loopback&&"STARROCKS".equals(type);
+  String url="jdbc:mysql://"+host+":"+source.get("port")+"/"+Guard.identifier(String.valueOf(source.get("databaseName")))+
+    "?sslMode="+(insecureStarRocks?"DISABLED":"VERIFY_IDENTITY")+"&connectTimeout=3000&socketTimeout=6000";
+  if(!insecureStarRocks&&!sourceTruststoreUrl.isBlank()){
+   url+="&trustCertificateKeyStoreUrl="+sourceTruststoreUrl+
+      "&trustCertificateKeyStorePassword="+sourceTruststorePassword;
+  }
+  return url;
  }
  Map<String,Object> sourceForRead(String sourceId){
   List<Map<String,Object>> r=db.queryForList("""

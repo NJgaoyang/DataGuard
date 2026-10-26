@@ -18,10 +18,7 @@ class BusinessReadExecutor {
 
  List<Map<String,Object>> execute(Map<String,Object> source,String sql,String filterValue,
                                   List<String> columns,Set<String> masked,int limit,int timeoutSeconds) throws SQLException {
-  String host=String.valueOf(source.get("host"));
-  String jdbcUrl="jdbc:mysql://"+host+":"+source.get("port")+"/"+
-    Guard.identifier(String.valueOf(source.get("databaseName")))+
-    "?sslMode=VERIFY_IDENTITY&connectTimeout=3000&socketTimeout=6000";
+  String jdbcUrl=sources.jdbcUrlFor(source);
   List<Map<String,Object>> rows=new ArrayList<>();
   try(var connection=DriverManager.getConnection(jdbcUrl,
       String.valueOf(source.get("username")),sources.decryptPassword(source))){
