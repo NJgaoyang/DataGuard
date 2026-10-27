@@ -216,6 +216,10 @@ DeepSeek 模型 API 的 Function Calling 由**你的应用**转为上述 REST �
 
 更多资料：[REST 接口文档](docs/REST_AGENT_API.md) · [详细系统架构](docs/ARCHITECTURE.md) · [开发机真实业务联调](docs/P0_LIVE_ACCEPTANCE.md)。
 
+## 访问记录 SQL 审计与列表序号
+
+新增访问记录的脱敏 SQL 摘要及详情，并在数据源、Agent 管理、访问规则、工作台和 Agent 使用情况的最近访问列表中增加序号。SQL 实际绑定参数及敏感字面量不写入审计，历史记录不会伪造 SQL。参见 [SQL 审计与序号](docs/SQL_AUDIT_AND_SEQUENCE.md)。
+
 ## 审批中心四标签筛选
 
 全部申请、待我审批、我发起的、已处理分别由后端权限条件筛选，管理员的待审批与已处理列表覆盖有权处理的全部申请。连续切换标签不会被旧请求覆盖，具体定义见 [审批筛选规则](docs/APPROVAL_FILTERS.md)。

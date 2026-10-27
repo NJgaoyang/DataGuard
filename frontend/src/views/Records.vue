@@ -54,6 +54,9 @@ defineExpose({refresh});
     <a-descriptions-item label="数据源">{{detail.sourceName}}</a-descriptions-item>
     <a-descriptions-item label="目标表">{{detail.tableName}}</a-descriptions-item>
     <a-descriptions-item label="请求字段">{{detail.columnsRequested}}</a-descriptions-item>
+    <a-descriptions-item label="查询 SQL（已脱敏）">
+     <pre class="record-sql-full">{{detail.sqlTemplate||'历史记录未保存 SQL'}}</pre>
+    </a-descriptions-item>
     <a-descriptions-item label="请求行数">{{detail.requestedRows}}</a-descriptions-item>
     <a-descriptions-item label="返回行数">{{detail.returnedRows??'—'}}</a-descriptions-item>
     <a-descriptions-item label="执行耗时">{{detail.durationMs==null?'—':detail.durationMs+' 毫秒'}}</a-descriptions-item>
@@ -63,7 +66,7 @@ defineExpose({refresh});
     <a-descriptions-item label="审批意见">{{detail.reason||'—'}}</a-descriptions-item>
     <a-descriptions-item label="执行结果"><a-tag :color="stateColor(detail.status)">{{stateName[detail.status]||detail.status}}</a-tag></a-descriptions-item>
    </a-descriptions>
-   <p class="subtle" style="margin-top:15px">仅记录查询元信息和不可逆请求指纹，不保留敏感过滤值或查询结果。</p>
+   <p class="subtle" style="margin-top:15px">SQL 为安全审计模板，已遮蔽 SQL 字面量和绑定参数值；不保留查询结果。旧记录无法补录执行时的 SQL。</p>
   </div>
  </a-spin>
 </section>
@@ -73,14 +76,17 @@ defineExpose({refresh});
   <a-select v-model:value="agent" style="width:140px" :options="[{value:'all',label:'全部 Agent'},...agents.map(v=>({value:v,label:v}))]"/>
   <a-select v-model:value="source" style="width:150px" :options="[{value:'all',label:'全部数据源'},...sources.map(v=>({value:v,label:v}))]"/>
   <a-range-picker :value="date" format="YYYY-MM-DD" value-format="YYYY-MM-DD" :placeholder="['开始日期','结束日期']" @change="onRangeChange"/>
-  <a-input-search v-model:value="search" allow-clear class="search" placeholder="搜索数据表或请求编号"/>
+  <a-input-search v-model:value="search" allow-clear class="search" placeholder="搜索数据表、SQL 或请求编号"/>
  <a-button class="toolbar-refresh" @click="refresh">刷新</a-button>
  </div>
- <a-table :data-source="rows" :loading="busy" row-key="id" :pagination="pagination" :scroll="{x:1050}" @change="changePage">
+ <a-table :data-source="rows" :loading="busy" row-key="id" :pagination="pagination" :scroll="{x:1350}" @change="changePage">
   <a-table-column title="序号" :width="65"><template #default="{index}">{{(currentPage-1)*10+index+1}}</template></a-table-column>
   <a-table-column title="访问时间" :width="175"><template #default="{record}">{{stamp(record.createdAt)}}</template></a-table-column>
   <a-table-column title="Agent" data-index="agentName"/>
   <a-table-column title="访问对象" data-index="tableName"/>
+  <a-table-column title="SQL 摘要" :width="260">
+   <template #default="{record}"><span class="record-sql-preview" :title="String(record.sqlTemplate||'')">{{record.sqlTemplate||'—'}}</span></template>
+  </a-table-column>
   <a-table-column title="请求行数" data-index="requestedRows"/>
   <a-table-column title="返回行数"><template #default="{record}">{{record.returnedRows??'—'}}</template></a-table-column>
   <a-table-column title="状态"><template #default="{record}"><a-tag :color="stateColor(record.status)">{{stateName[record.status]||record.status}}</a-tag></template></a-table-column>

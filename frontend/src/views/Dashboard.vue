@@ -16,6 +16,7 @@ onMounted(()=>void refresh());defineExpose({refresh});
  </button></div>
  <section class="panel"><div class="panel-head"><h2>最近访问</h2><a-button type="link" @click="emit('navigate','records')">查看全部</a-button></div>
  <a-table :data-source="data.recent||[]" row-key="id" :pagination="false" :scroll="{x:720}">
+  <a-table-column title="序号" :width="72"><template #default="{index}">{{index+1}}</template></a-table-column>
   <a-table-column title="时间"><template #default="{record}">{{stamp(record.createdAt)}}</template></a-table-column>
   <a-table-column title="Agent" data-index="agentName"/>
   <a-table-column title="访问对象" data-index="tableName"/>

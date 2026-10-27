@@ -488,3 +488,16 @@
 .agent-secret-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:20px}
 
 .agent-example-code{padding:16px;border:1px solid #e4e9f1;border-radius:8px;background:#f7f9fc;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7;font-size:12px;max-height:390px;overflow:auto}
+
+/* Auditable SQL templates, never raw bound values or sensitive literals. */
+.record-sql-preview {
+ display:inline-block;max-width:250px;overflow:hidden;text-overflow:ellipsis;
+ white-space:nowrap;vertical-align:middle;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;
+ font-size:12px;
+}
+.record-sql-full {
+ margin:0;padding:12px 14px;max-width:100%;
+ overflow-x:auto;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6;
+ font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;
+ border-radius:6px;background:var(--ant-color-fill-tertiary,#f5f7fa);
+}

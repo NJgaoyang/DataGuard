@@ -96,6 +96,7 @@ onMounted(async()=>{await loadQueryLimit();await refresh();const row=rows.value.
 <section v-if="!selected" class="panel">
  <div class="toolbar"><a-button type="primary" @click="create">＋ 新增数据源</a-button><a-input-search class="search" v-model:value="search" allow-clear placeholder="搜索数据库名称、类型或主机"/><a-button class="toolbar-refresh" @click="refresh">刷新</a-button></div>
  <a-table :data-source="filtered" row-key="id" :pagination="page" :scroll="{x:740}">
+ <a-table-column title="序号" :width="72"><template #default="{record}">{{filtered.findIndex(item=>item.id===record.id)+1}}</template></a-table-column>
   <a-table-column title="名称"><template #default="{record}"><a-button type="link" class="name-link" @click="open(record,'view')">{{record.name}}</a-button></template></a-table-column>
   <a-table-column title="类型" data-index="type"/>
   <a-table-column title="主机地址"><template #default="{record}">{{record.host}}:{{record.port}}</template></a-table-column>

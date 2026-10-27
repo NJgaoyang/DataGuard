@@ -87,6 +87,19 @@ class SqlQueryIntegrationTest {
   assertEquals("SUCCESS",result.path("status").asText(),result.toString());
   assertEquals(21,result.path("rows").get(0).path("id").asInt());
   assertEquals(2,result.path("requestIds").size());
+  for(JsonNode requestId:result.path("requestIds")){
+   String template=db.queryForObject("SELECT sql_template FROM dg_requests WHERE id=?",String.class,requestId.asText());
+   assertNotNull(template,"Every JOIN table must have a SQL audit template");
+   assertTrue(template.contains("JOIN order_items"));
+   assertFalse(template.contains("'SUCCESS'"),"Sensitive literal must not enter audit DB");
+   assertTrue(template.contains("'[REDACTED]'"));
+  }
+  String ownerUsername=db.queryForObject("SELECT username FROM dg_users WHERE id=?",String.class,f.principal().get("ownerId"));
+  String requestId=result.path("requestIds").get(0).asText();
+  mvc.perform(get("/api/requests/"+requestId)
+    .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user(ownerUsername).roles("READER")))
+   .andExpect(status().isOk())
+   .andExpect(jsonPath("$.sqlTemplate").isString());
   mvc.perform(post("/api/v1/agent/queries").header("Authorization","Bearer "+f.token())
    .contentType("application/json").content(json.writeValueAsString(args)))
    .andExpect(status().isOk()).andExpect(jsonPath("$.rowCount").value(1));

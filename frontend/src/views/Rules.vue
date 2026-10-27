@@ -41,6 +41,7 @@ onMounted(async()=>{await loadQueryLimit();await refresh();const row=rows.value.
  <section v-if="!selected" class="panel">
  <div class="toolbar"><a-button type="primary" @click="openCreate">＋ 新建规则</a-button><a-input-search v-model:value="search" allow-clear class="search" placeholder="搜索规则名称或适用范围"/><a-button class="toolbar-refresh" @click="refresh">刷新</a-button></div>
  <a-table :data-source="filtered" row-key="id" :pagination="page" :scroll="{x:850}">
+  <a-table-column title="序号" :width="72"><template #default="{record}">{{filtered.findIndex(item=>item.id===record.id)+1}}</template></a-table-column>
  <a-table-column title="规则名称"><template #default="{record}"><a-button type="link" class="name-link" @click="selected=record">{{record.name}}</a-button></template></a-table-column>
  <a-table-column title="适用范围"><template #default="{record}">{{record.tableName==='*'?'全部表':record.tableName}}</template></a-table-column>
  <a-table-column title="条件"><template #default="{record}">{{condition(record)}}</template></a-table-column>

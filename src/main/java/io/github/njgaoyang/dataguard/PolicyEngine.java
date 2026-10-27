@@ -34,7 +34,7 @@ class PolicyEngine {
   }catch(Exception ex){throw new IllegalStateException(ex);}
  }
  @Transactional
- public Verdict begin(Map<String,Object> agent,String source,String table,List<String> columns,int count,String shape){
+ public Verdict begin(Map<String,Object> agent,String source,String table,List<String> columns,int count,String shape,String sqlTemplate){
   String agentId=(String)agent.get("id"),ownerId=(String)agent.get("ownerId");
   // Agent row serializes identical concurrent approvals. No possibility of double consumption.
   List<String> locked=db.query("SELECT id FROM dg_agents WHERE id=? AND enabled=1 AND deleted_at IS NULL AND expires_at>NOW(3) FOR UPDATE",(rs,i)->rs.getString(1),agentId);
@@ -64,6 +64,8 @@ class PolicyEngine {
     """,agentId,hash,rule.get("id"),rule.get("revision"));
    if(!existing.isEmpty()){
     String id=String.valueOf(existing.get(0).get("id"));
+    if(sqlTemplate!=null)
+     db.update("UPDATE dg_requests SET sql_template=? WHERE id=? AND sql_template IS NULL",sqlTemplate,id);
     if("APPROVED".equals(existing.get(0).get("status"))){
      int changed=db.update("UPDATE dg_requests SET status='EXECUTING' WHERE id=? AND status='APPROVED'",id);
      if(changed!=1)throw new ResponseStatusException(HttpStatus.CONFLICT,"Approval already used");
@@ -76,11 +78,11 @@ class PolicyEngine {
   String status=switch(action){case "ALLOW"->"EXECUTING";case "APPROVAL"->"PENDING";default->"DENIED";};
   db.update("""
    INSERT INTO dg_requests(id,agent_id,owner_id,source_id,table_name,columns_csv,requested_rows,
-      query_hash,rule_id,rule_revision,action,status,approver_id,expires_at,reason)
-   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,DATE_ADD(NOW(3),INTERVAL 24 HOUR),?)
+      query_hash,rule_id,rule_revision,action,status,approver_id,expires_at,reason,sql_template)
+   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,DATE_ADD(NOW(3),INTERVAL 24 HOUR),?,?)
    """,id,agentId,ownerId,source,table,String.join(",",columns),count,hash,
      rule==null?null:rule.get("id"),rule==null?null:rule.get("revision"),action,status,approver,
-     "DENY".equals(action)?"Unmatched or prohibited access rule":null);
+     "DENY".equals(action)?"Unmatched or prohibited access rule":null,sqlTemplate);
   if("DENY".equals(action))audit.log((String)agent.get("name"),"AGENT_READ",id,source+"/"+table,"DENIED","Denied by dynamic access rules");
   return new Verdict(action,id);
  }
@@ -262,6 +264,7 @@ class ControlApi {
    SELECT q.id,q.created_at AS createdAt,q.expires_at AS expiresAt,
      q.finished_at AS finishedAt,q.table_name AS tableName,q.columns_csv AS columnsRequested,
      q.requested_rows AS requestedRows,q.returned_rows AS returnedRows,q.duration_ms AS durationMs,
+    q.sql_template AS sqlTemplate,
      q.status,q.action,q.reason,q.rule_id AS ruleId,q.source_id AS sourceId,s.name AS sourceName,
      a.name AS agentName,owner.username AS ownerUsername,owner.display_name AS requesterName,
      reviewer.display_name AS approverName,reviewer.username AS approverUsername,access_rule.name AS ruleName
@@ -297,9 +300,9 @@ class ControlApi {
   if(!agent.isBlank()){conditions+=" AND a.name=?";params.add(agent);}
   if(!source.isBlank()){conditions+=" AND s.name=?";params.add(source);}
   if(!search.isBlank()){
-   conditions+=" AND (q.id LIKE ? OR q.table_name LIKE ? OR a.name LIKE ? OR s.name LIKE ? OR owner.display_name LIKE ?)";
+   conditions+=" AND (q.id LIKE ? OR q.table_name LIKE ? OR a.name LIKE ? OR s.name LIKE ? OR owner.display_name LIKE ? OR q.sql_template LIKE ?)";
    String q="%"+search.replace("%","\\%").replace("_","\\_")+"%";
-   for(int i=0;i<5;i++)params.add(q);
+   for(int i=0;i<6;i++)params.add(q);
   }
   try{
    if(!from.isBlank()){
@@ -323,6 +326,7 @@ class ControlApi {
    SELECT q.id,q.created_at AS createdAt,q.expires_at AS expiresAt,
     q.finished_at AS finishedAt,q.table_name AS tableName,q.columns_csv AS columnsRequested,
     q.requested_rows AS requestedRows,q.returned_rows AS returnedRows,q.duration_ms AS durationMs,
+    q.sql_template AS sqlTemplate,
     q.status,q.action,q.reason,q.rule_id AS ruleId,q.source_id AS sourceId,s.name AS sourceName,
     a.name AS agentName,owner.username AS ownerUsername,owner.display_name AS requesterName,
     reviewer.display_name AS approverName,reviewer.username AS approverUsername,access_rule.name AS ruleName
@@ -351,6 +355,7 @@ class ControlApi {
    SELECT q.id,q.created_at AS createdAt,q.expires_at AS expiresAt,
     q.finished_at AS finishedAt,q.table_name AS tableName,q.columns_csv AS columnsRequested,
     q.requested_rows AS requestedRows,q.returned_rows AS returnedRows,q.duration_ms AS durationMs,
+    q.sql_template AS sqlTemplate,
     q.status,q.action,q.reason,q.rule_id AS ruleId,q.source_id AS sourceId,s.name AS sourceName,
     a.name AS agentName,owner.username AS ownerUsername,owner.display_name AS requesterName,
     reviewer.display_name AS approverName,reviewer.username AS approverUsername,access_rule.name AS ruleName
