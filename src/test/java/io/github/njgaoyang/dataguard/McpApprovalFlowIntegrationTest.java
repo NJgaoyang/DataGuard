@@ -37,7 +37,7 @@ class McpApprovalFlowIntegrationTest {
   String body=json.writeValueAsString(Map.of(
    "jsonrpc","2.0","id",1,"method","tools/call",
    "params",Map.of("name",tool,"arguments",args)));
-  String response=mvc.perform(post("/mcp").contentType("application/json")
+  String response=mvc.perform(post("/mcp").contentType("application/json").accept("application/json","text/event-stream")
       .header("Authorization","Bearer "+token).content(body))
     .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
   return json.readTree(response);
@@ -144,7 +144,7 @@ class McpApprovalFlowIntegrationTest {
   // Removed operations must not remain available under either transport.
   for(String obsolete:List.of("execute_readonly","count_rows","aggregate_readonly")){
    JsonNode old=mcp(token,obsolete,Map.of());
-   assertTrue(old.path("result").path("isError").asBoolean());
+   assertTrue(old.has("error") || old.path("result").path("isError").asBoolean());
   }
   mvc.perform(post("/api/v1/agent/counts").header("Authorization","Bearer "+token)
     .contentType("application/json").content("{}")).andExpect(status().isNotFound());
@@ -152,11 +152,22 @@ class McpApprovalFlowIntegrationTest {
     .contentType("application/json").content("{}")).andExpect(status().isNotFound());
   mvc.perform(post("/api/v1/agent/queries/sql").header("Authorization","Bearer "+token)
     .contentType("application/json").content("{}")).andExpect(status().isNotFound());
-  mvc.perform(post("/mcp").contentType("application/json").header("Authorization","Bearer "+token)
+  mvc.perform(get("/mcp").header("Authorization","Bearer "+token)
+      .accept("text/event-stream")).andExpect(status().isMethodNotAllowed());
+  mvc.perform(post("/mcp").header("Authorization","Bearer "+token)
+      .contentType("application/json").accept("application/json","text/event-stream")
+      .content("{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}"))
+      .andExpect(status().isAccepted());
+  mvc.perform(post("/mcp").header("Authorization","Bearer "+token)
+      .header("Origin","https://untrusted.example").contentType("application/json")
+      .accept("application/json","text/event-stream")
+      .content("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}"))
+      .andExpect(status().isForbidden());
+  mvc.perform(post("/mcp").contentType("application/json").accept("application/json","text/event-stream").header("Authorization","Bearer "+token)
      .header("MCP-Protocol-Version","2025-03-26").content(
        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-03-26\"}}"))
    .andExpect(status().isOk()).andExpect(jsonPath("$.result.protocolVersion").value("2025-03-26"));
-  mvc.perform(post("/mcp").contentType("application/json").header("Authorization","Bearer "+token)
+  mvc.perform(post("/mcp").contentType("application/json").accept("application/json","text/event-stream").header("Authorization","Bearer "+token)
      .header("MCP-Protocol-Version","1900-01-01").content(
        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}"))
    .andExpect(status().isBadRequest());

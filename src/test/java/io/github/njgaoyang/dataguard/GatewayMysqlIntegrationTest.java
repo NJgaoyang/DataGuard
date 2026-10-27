@@ -33,7 +33,7 @@ class GatewayMysqlIntegrationTest {
  @Test void anonymousApiAndMcpMustBeRejected() throws Exception {
   mvc.perform(get("/api/session")).andExpect(status().isUnauthorized());
   mvc.perform(get("/api/sources")).andExpect(status().isUnauthorized());
-  mvc.perform(post("/mcp").contentType("application/json")
+  mvc.perform(post("/mcp").contentType("application/json").accept("application/json","text/event-stream")
     .content("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"}"))
    .andExpect(status().isUnauthorized());
   mvc.perform(get("/api/csrf")).andExpect(status().isOk());

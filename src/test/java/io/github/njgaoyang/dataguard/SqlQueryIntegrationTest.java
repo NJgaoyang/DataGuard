@@ -58,7 +58,7 @@ class SqlQueryIntegrationTest {
   return new Fixture(agent,source,token,Map.of("id",agent,"ownerId",owner,"name","sql-test"));
  }
  private JsonNode tool(String token,String name,Map<String,Object> arg) throws Exception{
-  var result=mvc.perform(post("/mcp").contentType("application/json")
+  var result=mvc.perform(post("/mcp").contentType("application/json").accept("application/json","text/event-stream")
    .header("Authorization","Bearer "+token)
    .content(json.writeValueAsString(Map.of("jsonrpc","2.0","id",1,"method","tools/call",
      "params",Map.of("name",name,"arguments",arg)))))
