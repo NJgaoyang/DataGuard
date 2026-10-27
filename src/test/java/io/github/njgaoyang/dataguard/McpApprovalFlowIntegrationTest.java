@@ -122,6 +122,11 @@ class McpApprovalFlowIntegrationTest {
   assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM dg_requests WHERE status='APPROVED' AND agent_id=?",Integer.class,agent));
   verify(business,times(1)).execute(anyMap(),anyString(),isNull(),anyList(),anySet(),eq(75),anyInt());
 
+  // REST and MCP share the same policy, including structured business errors.
+  mvc.perform(post("/api/v1/agent/queries").contentType("application/json")
+     .header("Authorization","Bearer "+token).content(json.writeValueAsString(query)))
+   .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
+
   // A new allow rule permits aggregation and count through both protocols.
   db.update("""
    INSERT INTO dg_rules(id,name,source_id,table_name,min_rows,max_rows,action,priority)
@@ -147,11 +152,6 @@ class McpApprovalFlowIntegrationTest {
       json.writeValueAsString(Map.of("sourceId",source,"tableName","orders",
         "aggregateFunction","SUM","aggregateColumn","amount","limit",10))))
    .andExpect(status().isOk()).andExpect(jsonPath("$.rows[0].metric").value(99));
-
-  // REST and MCP share the same policy, including structured business errors.
-  mvc.perform(post("/api/v1/agent/queries").contentType("application/json")
-     .header("Authorization","Bearer "+token).content(json.writeValueAsString(query)))
-   .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
 
   mvc.perform(post("/mcp").contentType("application/json").header("Authorization","Bearer "+token)
      .header("MCP-Protocol-Version","2025-03-26").content(
