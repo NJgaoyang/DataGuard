@@ -1,240 +1,120 @@
 # DataGuard
 
-**面向 AI Agent 的数据库安全访问平台**，统一提供 **MCP Streamable HTTP** 与 **RESTful API**，让 Codex、自建 Agent、Java、Go、Python 和基于 DeepSeek 的应用通过受控接口读取 MySQL / StarRocks，而非持有数据库账号直接访问。
+**面向 AI Agent 的数据库只读安全访问网关**。通过标准 MCP Streamable HTTP 或 REST API，让 AI 助手与业务应用在**受控授权、规则审批、行数限制和审计**的前提下查询 MySQL / StarRocks，而不直接持有业务数据库账号。
 
-> 当前开发分支：[`feature/ai-access-gateway-v1`](https://github.com/NJgaoyang/DataGuard/tree/feature/ai-access-gateway-v1)。本 README 适用于该分支。项目为独立实现，不依赖旧 MCP-DataGuard 仓库。
+> **代码基线：`main`。** 文档描述当前主分支的实现（Flyway V1–V8），不是早期 P0 方案或旧的固定查询接口。开发演示环境：[DataGuard](https://110.42.132.44/)；示例公网 IP 不代表生产域名或生产安全验收。
 
-## 功能
+## 已实现的核心功能
 
-- **双协议**：`POST /mcp` 与 `/api/v1/agent/**` 使用相同 Agent Bearer Token、白名单、规则引擎与 JDBC 执行链。
-- **分级授权**：数据源、表、字段白名单以及 Agent 专属授权取交集；默认拒绝。
-- **只读保护**：后端生成受限单表 `SELECT`，不提供任意 SQL、DDL、DML、JOIN；单次读取行数默认最多 200 行，管理员可在安全设置内调整。
-- **访问审批**：规则可设置放行、拒绝或人工审批；通过后重试完全相同的查询，单次审批不可重复消费。
-- **安全审计**：记录 Agent、请求、规则、审批和操作审计，不持久化查询返回的业务数据。
-- **管理控制台**：数据源、Agent、访问规则、审批中心、访问记录、用户和安全参数。
+| 领域 | 当前能力 |
+|---|---|
+| MCP | 官方 Java MCP SDK **0.18.2**，无状态 Streamable HTTP `POST /mcp`，六个工具；支持 `2025-03-26`、`2025-06-18`、`2025-11-25` 协议版本 |
+| REST | `/api/v1/agent/**`：授权数据源、表/列目录、SQL 校验、SQL 查询、审批状态 |
+| SQL | 只读 `SELECT`、聚合与表达式、`GROUP BY/HAVING/ORDER BY`、参数绑定、**同源最多两张不同物理表 JOIN**，严格 AST 白名单 |
+| 数据源 | MySQL、StarRocks（MySQL 协议）；数据库物理只读账号、平台表/字段授权和 Agent 独立授权求交集 |
+| 规则与审批 | `ALLOW / DENY / APPROVAL`，默认拒绝；审批人独立审核、相同 SQL 与参数重试、批准单次消费 |
+| Agent | 仅「启用 / 已停用」两种运行状态；启用中不能编辑授权/删除；停用后可编辑、启用、软删除；独立 Token 轮换 |
+| 审计 | 请求结果、审批、操作审计；新增**脱敏 SQL 模板**（不保存绑定值及查询返回数据） |
+| 管理控制台 | 工作台、数据源、Agent 管理、访问规则、审批中心、访问记录、系统设置；按角色和权限显示 |
+| 部署与测试 | Java 21 + Spring Boot 3.5、Vue 3 + Ant Design Vue 4、MySQL 8.4 + Flyway V1–V8、CI 的 Maven 和 Playwright 验收 |
 
-## 系统架构
+**不支持的范围：** 任意 SQL/DML/DDL、跨数据源 JOIN、子查询/CTE/UNION/窗口函数、`SELECT *` 列展开、内置 OAuth 2.1 授权服务器、MCP SSE 推送/会话恢复。运行于单体应用，不是集群化生产 HA 系统。
+
+## 体系结构
 
 ```mermaid
-flowchart TD
-    A[Codex / MCP Agent] -->|MCP HTTP + Token| C[DataGuard 安全网关]
-    B[Java / Go / Python / DeepSeek 应用] -->|REST + Token| C
-    C --> D[身份验证、限流与授权白名单]
-    D --> E[规则引擎]
-    E -->|允许| F[只读查询执行器]
-    E -->|需审批| G[内部用户审批]
-    G -->|批准后重试| F
-    E -->|拒绝| H[访问拒绝]
-    F --> I[MySQL / StarRocks]
-    C --> J[(MySQL 元数据与审计)]
-    E --> J
-    G --> J
+flowchart LR
+    Client["MCP 客户端 / REST 调用方"] --> API["DataGuard MCP / REST 接入"]
+    API --> Token["Agent Token、限流、身份"]
+    Token --> SQL["SQL AST 验证与表/字段/函数授权"]
+    SQL --> Rules{"访问规则"}
+    Rules -->|ALLOW| Read["只读 JDBC + 超时/行数控制"]
+    Rules -->|APPROVAL| Review["独立审批人审核"]
+    Review -->|相同请求重试且单次消费| Read
+    Rules -->|DENY| Block["拒绝"]
+    Read --> DB["MySQL / StarRocks"]
+    Token --> Metadata[("MySQL 元数据 / 审计")]
+    Rules --> Metadata
+    Review --> Metadata
+    Read --> Metadata
 ```
 
-两个外部入口共享 Token 校验、平台/Agent 表字段权限、规则、审计和查询执行；**管理员拥有管理能力并不意味着每个 Agent 自动拥有全部数据库读取权限**。
+管理后台的登录会话与外部 Agent Bearer Token **分别认证**。管理员可以维护策略，但新 Agent 并不会自动获得任何业务表字段的读取权限。
 
-## 技术栈
+## 本地启动
 
-| 层次 | 技术 |
-|---|---|
-| 后端 | Java 21、Spring Boot 3.5、Spring Security、Spring JDBC |
-| 前端 | Vue 3、TypeScript、Vite 7、Ant Design Vue 4、Vue Router |
-| 元数据存储 | MySQL 8.4、Flyway |
-| 业务数据源 | MySQL、StarRocks（MySQL 协议） |
-| 部署 | 单体 Spring Boot JAR、systemd；无需 Docker |
-| 外部接入 | MCP Streamable HTTP（JSON 响应）和 REST JSON API |
-
-## 快速部署与首次使用
-
-1. 准备 Java 21、Maven、Node.js、MySQL 8，并创建独立的 DataGuard 元数据库及最小权限账号。
-2. 配置环境变量：`DG_MYSQL_URL`、`DG_MYSQL_USER`、`DG_MYSQL_PASSWORD`、`DG_ENCRYPTION_KEY`（32 字节随机密钥的 Base64）、`DG_INITIAL_ADMIN_PASSWORD`（初始复杂密码）、`DG_ALLOWED_SOURCE_HOSTS`（允许访问的数据库主机）；HTTPS 环境设置 `DG_SECURE_COOKIE=true`。
-3. 克隆指定分支、打包运行：
+准备 Java **21**、Maven、Node.js **22**、MySQL **8.x**（开发 CI 使用 8.4），并为平台元数据创建独立数据库与账号。
 
 ```bash
-git clone -b feature/ai-access-gateway-v1 https://github.com/NJgaoyang/DataGuard.git
-cd DataGuard/frontend
-npm ci
-npm run build
-cd ..
-mvn clean package
+git clone https://github.com/NJgaoyang/DataGuard.git
+cd DataGuard
+cd frontend && npm ci && npm run build && cd ..
+mvn -B -ntp clean package
+```
+
+配置运行环境中的 `DG_MYSQL_URL`、`DG_MYSQL_USER`、`DG_MYSQL_PASSWORD`、`DG_ENCRYPTION_KEY`、`DG_INITIAL_ADMIN_PASSWORD`、`DG_ALLOWED_SOURCE_HOSTS`，然后：
+
+```bash
 java -jar target/dataguard-1.0.0-SNAPSHOT.jar
 ```
 
-4. 用 `admin` 首次登录并修改初始密码。在**数据源**配置物理只读账号并开启表、字段权限；在 **Agent 管理**新建 Agent、复制仅展示一次的 Token 并设置独立授权；在**访问规则**中设定放行/审批/拒绝条件；最后使用以下任一客户端接入。
-5. 在**审批中心**处理需要人工批准的访问，在**访问记录**中检查请求与审计。
+默认只绑定 `127.0.0.1:8080`；Flyway 启动时按顺序执行 V1–V8。浏览器登录使用首次初始化的 `admin`，必须修改初始密码，然后依次配置**数据源 → 平台表/字段白名单 → Agent 授权 → 访问规则**。详情见 [安装与快速开始](docs/GETTING_STARTED.md)。
 
-> 请勿将数据库密码、加密密钥或 Agent Token 放入仓库。正式接入要求 HTTPS 有效证书及数据库 TLS/最小权限配置；开发机演示并不等于生产认证。
+> **安全提示：** 所有密钥/数据库凭据应从环境或受保护的配置注入，不要提交到 GitHub；公网使用可信 HTTPS/TLS、最小权限账号和独立备份。开发演示站不能直接作为生产安全认证。
 
-## 接入地址与认证
+## 外部 Agent 调用
 
-设置环境变量 `DATAGUARD_TOKEN` 为平台新建 Agent 时得到的 `dg_...` Token。所有客户端共享地址，**身份由 Token 决定**。
+在「Agent 管理」创建 Agent，安全保存**只展示一次**的 Token，并授予相应数据源、表、字段，再添加可匹配的访问规则。
 
-| 协议 | 示例地址 | 用途 |
-|---|---|---|
-| MCP | `https://110.42.132.44/mcp` | 支持 MCP 的客户端 |
-| REST | `https://110.42.132.44/api/v1/agent` | Java / Go / Python、自建 Agent、DeepSeek 桥接应用 |
-
-以上 IP 为**开发测试站示例**，生产使用时替换为自己的 HTTPS 域名；客户端必须正常校验证书。HTTP Header：`Authorization: Bearer <DATAGUARD_TOKEN>`。
-
-## MCP 接入
-
-**Codex CLI** 可直接添加 HTTP MCP 服务：
+### REST：验证与执行 SQL
 
 ```bash
-export DATAGUARD_TOKEN='dg_替换成自己的令牌'
-codex mcp add dataguard --url https://110.42.132.44/mcp --bearer-token-env-var DATAGUARD_TOKEN
-codex mcp list
-```
+export DATAGUARD_TOKEN='替换为实际 Agent Token'
+export DATAGUARD_URL='https://110.42.132.44'
 
-Windows PowerShell 环境变量示例：`$env:DATAGUARD_TOKEN = 'dg_替换成自己的令牌'`。
-
-其他兼容 MCP Streamable HTTP 的客户端可配置：服务器 URL `/mcp`、Header `Authorization: Bearer dg_...`。各客户端配置格式不同；本项目目前验证过 JSON-RPC HTTP 请求，**不保证全部第三方 MCP SDK、SSE 扩展兼容**。
-
-测试 MCP 工具列表：
-
-```bash
-curl -X POST 'https://110.42.132.44/mcp' \
+curl -X POST "$DATAGUARD_URL/api/v1/agent/queries/validate" \
   -H "Authorization: Bearer $DATAGUARD_TOKEN" \
   -H 'Content-Type: application/json' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
-```
+  -d '{"sourceId":"替换为数据源 UUID","sql":"SELECT COUNT(*) AS total FROM orders LIMIT 1","params":[]}'
 
-MCP 提供六个工具：list_datasources、get_schema、describe_table、validate_sql、execute_sql_readonly、get_access_request。所有查询使用统一 SQL AST 安全引擎。
-
-
-### 官方 MCP SDK 实现（Streamable HTTP）
-
-DataGuard 现在采用 **官方 MCP Java SDK 0.18.2 + Spring WebMVC Stateless Streamable HTTP**，不再使用自编写 JSON-RPC Controller。
-保留 SQL 权限、人工审批、审计、Agent Token 认证及 Origin 校验；
-不提供 SSE 推送时 GET /mcp 规范返回 405，notifications 返回 202。
-当前使用静态 Agent Bearer Token，不提供 OAuth 登录；客户端设置及实际验收状态见 [MCP 客户端接入与验收](docs/MCP_INTEROPERABILITY.md)。
-
-## RESTful API 接入
-
-| 方法 | 路径（基于 `/api/v1/agent`） | 用途 |
-|---|---|---|
-| GET | `/datasources` | 列出授权数据源 |
-| GET | `/datasources/{id}/tables` | 列出授权表 |
-| GET | `/datasources/{id}/tables/{table}/columns` | 列出授权字段 |
-| POST | `/queries` | 授权 SQL SELECT（包含计算和 JOIN） |
-| POST | `/queries/validate` | SQL AST 权限校验 |
-| GET | `/requests/{id}` | 获取审批状态 |
-
-```bash
-curl -X POST 'https://110.42.132.44/api/v1/agent/queries' \
+curl -X POST "$DATAGUARD_URL/api/v1/agent/queries" \
   -H "Authorization: Bearer $DATAGUARD_TOKEN" \
   -H 'Content-Type: application/json' \
-  -d '{"sourceId":"替换为数据源UUID","sql":"SELECT order_id, amount FROM orders ORDER BY order_id LIMIT 10"}'
+  -d '{"sourceId":"替换为数据源 UUID","sql":"SELECT COUNT(*) AS total FROM orders LIMIT 1","params":[]}'
 ```
 
-REST 响应直接为 JSON 数据；命中审批时返回 `status=PENDING`、`requestId`，调用方可查询 `/requests/{id}`，审批通过后重试**完全相同**的查询。无匹配放行规则时默认拒绝。
+若命中人工审批，会返回 `PENDING` 与 `requestId`：审批完成后按**相同 SQL、参数和权限范围**重新提交请求。SQL/REST 具体限制见 [REST Agent API](docs/REST_AGENT_API.md) 和 [SQL 查询与安全模型](docs/SQL_QUERY.md)。
 
-### Java 21
+### MCP：对接 AI 客户端
 
-以下示例读取该 Agent 有权访问的数据源，无需第三方 HTTP 包：
+- 远程地址：`https://110.42.132.44/mcp`（开发环境）
+- 传输：**Streamable HTTP**，使用 `Authorization: Bearer <AGENT_TOKEN>`
+- 工具：`list_datasources`、`get_schema`、`describe_table`、`validate_sql`、`execute_sql_readonly`、`get_access_request`
 
-```java
-import java.net.URI;
-import java.net.http.*;
+官方 MCP Java SDK 实现为**无状态**模式：不提供 SSE 推送，`GET /mcp` 正常返回 `405`。当前只有静态 Agent Bearer Token，**没有 OAuth 登录流程**；并非所有云端客户端都能不经额外配置直接接入。
 
-public class DataGuardExample {
-    public static void main(String[] args) throws Exception {
-        String token = System.getenv("DATAGUARD_TOKEN");
-        HttpClient client = HttpClient.newHttpClient();
-        HttpRequest request = HttpRequest.newBuilder(
-                URI.create("https://110.42.132.44/api/v1/agent/datasources"))
-            .header("Authorization", "Bearer " + token)
-            .GET().build();
-        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-        System.out.println(response.statusCode() + ": " + response.body());
-    }
-}
-```
+Cursor、VS Code、WorkBuddy、Claude、ChatGPT 的接入原则、配置示例和实际验收边界见 [MCP 客户端指南](docs/MCP_INTEROPERABILITY.md)。不能把“协议层测试通过”误写为四种产品账号端到端验收通过。
 
-### Go
+## 管理控制台的当前交互
 
-```go
-package main
+- Agent 启用时，先停用才能编辑授权或软删除；正常停用与重新启用不会自动废弃有效 Token，**轮换 Token** 是单独安全操作。
+- 审批中心包含「全部申请 / 待我审批 / 我发起的 / 已处理」，根据账号权限返回不同结果。
+- 访问记录日期默认当天；下拉候选项独立于当前结果；**修改筛选和“重置”均不立即查询，只有点击“查询”才应用**；历史记录若未保存 SQL 则不补造。
+- 主列表和最近访问加入序号；访问记录含脱敏 SQL 摘要、详情及搜索。
 
-import (
-    "fmt"
-    "io"
-    "net/http"
-    "os"
-)
+更多界面说明见 [控制台使用指南](docs/CONSOLE_GUIDE.md)。
 
-func main() {
-    req, err := http.NewRequest("GET", "https://110.42.132.44/api/v1/agent/datasources", nil)
-    if err != nil { panic(err) }
-    req.Header.Set("Authorization", "Bearer " + os.Getenv("DATAGUARD_TOKEN"))
-    client := &http.Client{}
-    resp, err := client.Do(req)
-    if err != nil { panic(err) }
-    defer resp.Body.Close()
-    body, err := io.ReadAll(resp.Body)
-    if err != nil { panic(err) }
-    fmt.Printf("HTTP %d: %s\n", resp.StatusCode, body)
-}
-```
+## 项目文档
 
-### Python
+从 **[docs 文档目录](docs/README.md)** 查看全部说明：
 
-```python
-# pip install requests
-import os
-import requests
+- [安装与快速开始](docs/GETTING_STARTED.md) · [系统架构](docs/ARCHITECTURE.md)
+- [MCP 接入与验收](docs/MCP_INTEROPERABILITY.md) · [REST Agent API](docs/REST_AGENT_API.md)
+- [SQL 查询与安全模型](docs/SQL_QUERY.md) · [控制台与业务流程](docs/CONSOLE_GUIDE.md)
+- [部署运维与备份](docs/OPERATIONS.md) · [测试与验收边界](docs/TESTING.md)
 
-base = "https://110.42.132.44/api/v1/agent"
-headers = {"Authorization": "Bearer " + os.environ["DATAGUARD_TOKEN"]}
-response = requests.get(base + "/datasources", headers=headers, timeout=15)
-response.raise_for_status()
-print(response.json())
+## 开发与版本管理
 
-# 将 sourceId 替换成上面列出的有效数据源 UUID，再查询已授权字段：
-response = requests.post(
-    base + "/queries",
-    headers=headers,
-    json={"sourceId": "替换为数据源UUID", "tableName": "orders",
-          "columns": ["order_id", "amount"], "limit": 10},
-    timeout=15,
-)
-response.raise_for_status()
-print(response.json())
-```
-
-### DeepSeek / 其他模型
-
-DeepSeek 模型 API 的 Function Calling 由**你的应用**转为上述 REST 请求。模型本身无需持有数据库凭据；应用端保存 Agent Token、执行请求并将返回结果交给模型。审批状态也由应用轮询处理。
-
-## 权限与安全须知
-
-- 平台表/字段白名单与 Agent 授权必须同时满足；只接受经 AST 权限校验的只读 SQL SELECT。
-- 数据源账号必须是物理只读账号，数据库连接地址需在 `DG_ALLOWED_SOURCE_HOSTS` 中。
-- Token 仅展示一次，失效、停用、撤销后不能继续调用；重新激活撤销 Agent 将重新签发 Token。
-- REST 与 MCP 共用访问规则、限流、脱敏、审批与审计逻辑。审批是**单次授权**，不代表扩大 Agent 权限。
-- 业务源查询返回值不会持久化到平台审计记录。
-
-更多资料：[REST 接口文档](docs/REST_AGENT_API.md) · [详细系统架构](docs/ARCHITECTURE.md) · [开发机真实业务联调](docs/P0_LIVE_ACCEPTANCE.md)。
-
-## 访问记录筛选交互
-
-默认展示当天记录，Agent/数据源选项独立于当前页，编辑筛选或点击重置不自动查询，点击“查询”才生效。详细规则见 [访问记录筛选](docs/RECORDS_FILTERS.md)。
-
-## 访问记录 SQL 审计与列表序号
-
-新增访问记录的脱敏 SQL 摘要及详情，并在数据源、Agent 管理、访问规则、工作台和 Agent 使用情况的最近访问列表中增加序号。SQL 实际绑定参数及敏感字面量不写入审计，历史记录不会伪造 SQL。参见 [SQL 审计与序号](docs/SQL_AUDIT_AND_SEQUENCE.md)。
-
-## 审批中心四标签筛选
-
-全部申请、待我审批、我发起的、已处理分别由后端权限条件筛选，管理员的待审批与已处理列表覆盖有权处理的全部申请。连续切换标签不会被旧请求覆盖，具体定义见 [审批筛选规则](docs/APPROVAL_FILTERS.md)。
-
-## Agent 两状态生命周期
-
-Agent 只有「启用」「已停用」运行状态：运行中不可编辑/删除；停用后可修改授权并软删除；Token 轮换独立管理。旧已撤销 Agent 迁移后凭据永不复活，重新启用自动签发新 Token；审批与审计历史保留。详细行为见 [Agent 生命周期](docs/AGENT_LIFECYCLE.md)。
-
-## MCP 与 REST 统一 SQL 查询
-
-- MCP 使用 execute_sql_readonly，REST 使用 POST /queries；校验使用 validate_sql 和 POST /queries/validate。
-- 通过 SQL SELECT 支持受控 COUNT(*)、聚合、表达式和两表 JOIN，不再提供旧 READ/COUNT/AGGREGATE 三套 API。
-- 全部表、字段、函数需通过 AST 和授权校验，审批由实际 SQL 查询触发并仅允许单次消费。
-- 详见 [SQL 查询说明](docs/SQL_QUERY_V2.md) 与 [REST Agent API](docs/REST_AGENT_API.md)。
+- **`main` 为仓库主分支**，本 README 与 `docs/` 以当前代码为准。
+- CI：Java/Maven 集成测试 + Vue 构建 + Playwright Chromium 页面验收，工作流位于 `.github/workflows/ci.yml`。
+- 此仓库不包含生产凭据。若部署环境版本与 `main` 不同，应以部署时的确切 Git SHA 和 JAR 哈希为准，不要以文档发布日期推测发布状态。
