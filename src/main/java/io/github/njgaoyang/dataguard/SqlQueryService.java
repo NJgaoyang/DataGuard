@@ -8,6 +8,7 @@ import java.util.regex.Pattern;
 import net.sf.jsqlparser.JSQLParserException;
 import net.sf.jsqlparser.expression.*;
 import net.sf.jsqlparser.expression.operators.relational.EqualsTo;
+import net.sf.jsqlparser.expression.operators.conditional.AndExpression;
 import net.sf.jsqlparser.parser.CCJSqlParserUtil;
 import net.sf.jsqlparser.schema.Column;
 import net.sf.jsqlparser.schema.Table;
@@ -65,6 +66,19 @@ class SqlQueryService {
   if(!(exp instanceof LongValue value)||value.getValue()<0||value.getValue()>max)
    throw invalid(name+" must be an integer literal within its configured maximum");
   return (int)value.getValue();
+ }
+ private static boolean hasEquijoin(Expression expression,Map<String,String> aliases){
+  if(expression instanceof EqualsTo eq &&
+     eq.getLeftExpression() instanceof Column left && eq.getRightExpression() instanceof Column right &&
+     left.getTable()!=null && right.getTable()!=null &&
+     left.getTable().getName()!=null && right.getTable().getName()!=null){
+   String l=aliases.get(left.getTable().getName()),r=aliases.get(right.getTable().getName());
+   return l!=null&&r!=null&&!l.equals(r);
+  }
+  if(expression instanceof AndExpression and)
+   return hasEquijoin(and.getLeftExpression(),aliases)||hasEquijoin(and.getRightExpression(),aliases);
+  if(expression instanceof Parenthesis p)return hasEquijoin(p.getExpression(),aliases);
+  return false;
  }
  Plan plan(Map<String,Object> agent,Map<String,Object> args){
   Object rawSql=args.get("sql"),rawSource=args.get("sourceId");
@@ -218,9 +232,8 @@ class SqlQueryService {
   for(Join join:joins){
    // Require a genuine table-to-table equality, not a tautology or a CROSS-like ON 1=1.
    var left=join.getOnExpression();
-   boolean meaningful=left.toString().matches("(?is).*\\b[A-Za-z][\\w]*\\.[A-Za-z][\\w]*\\s*=\\s*[A-Za-z][\\w]*\\.[A-Za-z][\\w]*.*");
-   if(!meaningful||java.util.regex.Pattern.compile("(?i)\\bOR\\b").matcher(left.toString()).find())
-    throw invalid("JOIN requires a qualified equijoin predicate without OR");
+   if(!hasEquijoin(left,aliases)||java.util.regex.Pattern.compile("(?i)\\bOR\\b").matcher(left.toString()).find())
+    throw invalid("JOIN requires an equality between columns of the two different tables, without OR");
    left.accept(visitor);
   }
   if(select.getWhere()!=null)select.getWhere().accept(visitor);
@@ -252,7 +265,7 @@ class SqlQueryService {
   if(limit>max)throw invalid("LIMIT exceeds configured quota");
   // COUNT(*) requires at least one authorized column on each source for table access checks.
   for(String table:tables)if(used.get(table).isEmpty())used.get(table).add(granted.get(table).stream().sorted().findFirst().orElseThrow());
-  return new Plan(select.toString(),sourceId,List.copyOf(parameters),limit,used,List.copyOf(tables),aliases,List.copyOf(invoked));
+  return new Plan(select.toString(),sourceId,Collections.unmodifiableList(new ArrayList<>(parameters)),limit,used,List.copyOf(tables),aliases,List.copyOf(invoked));
  }
  Map<String,Object> validate(Map<String,Object> agent,Map<String,Object> args){
   Plan plan=plan(agent,args);
