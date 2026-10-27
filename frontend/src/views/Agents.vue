@@ -64,6 +64,7 @@ onMounted(async()=>{await loadQueryLimit();await refresh();if(props.initialDetai
 <section v-if="!selected" class="panel">
  <div class="toolbar"><a-button type="primary" @click="openCreate">＋ 新建 Agent</a-button><a-input-search v-model:value="search" class="search" allow-clear placeholder="搜索 Agent 名称或所属用户"/><a-button class="toolbar-refresh" @click="refresh">刷新</a-button></div>
  <a-table :data-source="filtered" :pagination="page" row-key="id" :scroll="{x:770}">
+  <a-table-column title="序号" :width="72"><template #default="{record}">{{filtered.findIndex(item=>item.id===record.id)+1}}</template></a-table-column>
  <a-table-column title="Agent 名称"><template #default="{record}"><a-button type="link" class="name-link" @click="open(record,'view')">♧ {{record.name}}</a-button></template></a-table-column>
  <a-table-column title="所属用户" data-index="ownerName"/>
  <a-table-column title="状态"><template #default="{record}"><a-tag :color="record.enabled?'green':'default'">{{status(record)}}</a-tag></template></a-table-column>
@@ -131,6 +132,7 @@ onMounted(async()=>{await loadQueryLimit();await refresh();if(props.initialDetai
  </a-descriptions>
  <div class="drawer-section-title" style="margin-top:20px">最近访问</div>
  <a-table :data-source="usage.recent||[]" row-key="id" size="small" :pagination="false">
+  <a-table-column title="序号" :width="72"><template #default="{index}">{{index+1}}</template></a-table-column>
   <a-table-column title="时间"><template #default="{record}">{{stamp(record.createdAt)}}</template></a-table-column>
   <a-table-column title="数据表" data-index="tableName"/>
   <a-table-column title="行数" data-index="requestedRows"/>

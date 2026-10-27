@@ -285,9 +285,10 @@ class SqlQueryService {
       "sql",plan.sql(),"params",plan.params(),"tables",plan.tables()));}
    catch(com.fasterxml.jackson.core.JsonProcessingException ex){throw invalid("Invalid parameters");}
    String hash=PolicyEngine.fingerprint(String.valueOf(agent.get("id")),plan.sourceId(),"sqlv2",List.of(),plan.limit(),shape);
+   String safeTemplate=SqlAuditTemplate.redact(plan.sql());
    for(String table:plan.tables()){
     PolicyEngine.Verdict verdict=policy.begin(agent,plan.sourceId(),table,
-      plan.columns().get(table).stream().sorted().toList(),plan.limit(),hash);
+      plan.columns().get(table).stream().sorted().toList(),plan.limit(),hash,safeTemplate);
     if("DENY".equals(verdict.action()))throw new ResponseStatusException(HttpStatus.FORBIDDEN,"JOIN table policy denied");
     acquired.add(verdict);
     if("APPROVAL".equals(verdict.action()))throw new PolicyEngine.Pending(verdict.id());

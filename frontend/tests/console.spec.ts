@@ -18,10 +18,10 @@ const rules=[
 const requests=[
  {id:'q1',createdAt:'2026-10-25T10:31:08',expiresAt:'2028-12-30T00:00:00',tableName:'users',columnsRequested:'user_id,username,email',
    requestedRows:150,returnedRows:null,status:'PENDING',action:'APPROVAL',reason:null,ruleName:'敏感数据人工审核',ruleId:'r2',
-   agentName:'客服 Agent',ownerUsername:'reader',requesterName:'张三',approverUsername:'admin',approverName:'管理员',sourceName:'用户数据库',durationMs:null},
+   sqlTemplate:"SELECT user_id, username FROM users WHERE email='[REDACTED]' LIMIT ?",agentName:'客服 Agent',ownerUsername:'reader',requesterName:'张三',approverUsername:'admin',approverName:'管理员',sourceName:'用户数据库',durationMs:null},
  {id:'q2',createdAt:'2026-10-25T10:32:21',expiresAt:'2028-12-30T00:00:00',tableName:'orders',columnsRequested:'order_id,amount,created_at',
    requestedRows:50,returnedRows:50,status:'SUCCESS',action:'ALLOW',reason:null,ruleName:'订单表小批量读取',ruleId:'r1',
-   agentName:'数据分析 Agent',ownerUsername:'reader',requesterName:'李四',approverUsername:null,approverName:null,sourceName:'订单数据库',durationMs:320},
+   sqlTemplate:'SELECT order_id, amount FROM orders LIMIT ?',agentName:'数据分析 Agent',ownerUsername:'reader',requesterName:'李四',approverUsername:null,approverName:null,sourceName:'订单数据库',durationMs:320},
  {id:'q3',createdAt:'2026-10-25T10:29:17',expiresAt:'2028-12-30T00:00:00',tableName:'finance',columnsRequested:'revenue',
    requestedRows:500,returnedRows:0,status:'DENIED',action:'DENY',reason:'Exceeded safety policy',ruleName:'高风险规则',ruleId:'r3',
    agentName:'报表 Agent',ownerUsername:'reader',requesterName:'王五',approverUsername:null,approverName:null,sourceName:'分析数据库',durationMs:120}
@@ -220,6 +220,45 @@ test('list pages have one title and breadcrumbs exist only on detail pages',asyn
  await page.locator('.topbar-page .breadcrumb-parent').click();
  await expect(page.locator('.detail-page')).toHaveCount(0);
  await expect(page.locator('.topbar-page .breadcrumb-parent')).toHaveCount(0);
+});
+
+test('query SQL audit shows redacted preview and full detail; legacy records have no SQL',async({page})=>{
+ await navigate(page,'访问记录');
+ await expect(page.locator('.ant-table-thead')).toContainText('SQL 摘要');
+ await expect(page.locator('.ant-table-tbody tr.ant-table-row').first()).toContainText('SELECT user_id');
+ await page.locator('.ant-table-tbody .row-view-btn').first().click();
+ await expect(page.locator('.detail-page')).toContainText('查询 SQL（已脱敏）');
+ await expect(page.locator('.record-sql-full')).toContainText('SELECT user_id');
+ await expect(page.locator('.record-sql-full')).not.toContainText('SensitiveSecret123');
+ await page.getByRole('button',{name:'返回访问记录'}).click();
+ await page.locator('.ant-table-tbody .row-view-btn').nth(2).click();
+ await expect(page.locator('.record-sql-full')).toHaveText('历史记录未保存 SQL');
+});
+
+test('main management tables and both recent-access tables show serial numbers',async({page})=>{
+ for(const section of ['数据源','Agent 管理','访问规则']){
+  await navigate(page,section);
+  const table=page.locator('section.panel .ant-table').first();
+  await expect(table.locator('.ant-table-thead')).toContainText('序号');
+  await expect(table.locator('.ant-table-tbody tr.ant-table-row').first().locator('td').first()).toHaveText('1');
+ }
+ await navigate(page,'工作台');
+ const recent=page.locator('.ant-table').first();
+ await expect(recent.locator('.ant-table-thead')).toContainText('序号');
+ await expect(recent.locator('.ant-table-tbody tr.ant-table-row').first().locator('td').first()).toHaveText('1');
+ await navigate(page,'Agent 管理');
+ await page.locator('.ant-table-tbody .row-view-btn').first().click();
+ await page.getByRole('tab',{name:'使用情况'}).click();
+ await expect(page.locator('.detail-page .ant-table-thead')).toContainText('序号');
+});
+
+test('data tables keep absolute sequential numbers across built-in pagination',async({page})=>{
+ await page.route('**/api/agents',route=>route.fulfill({status:200,contentType:'application/json',
+  body:JSON.stringify(Array.from({length:13},(_,i)=>({...agents[0],id:'numbered-'+i,name:'Numbered Agent '+i})))}));
+ await navigate(page,'Agent 管理');
+ await expect(page.locator('.ant-table-tbody tr.ant-table-row')).toHaveCount(10);
+ await page.locator('.ant-pagination-item-2').click();
+ await expect(page.locator('.ant-table-tbody tr.ant-table-row').first().locator('td').first()).toHaveText('11');
 });
 
 test('access records use Chinese calendar, date-time and fixed ten-row server pagination',async({page})=>{
