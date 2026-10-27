@@ -37,7 +37,7 @@ class PolicyEngine {
  public Verdict begin(Map<String,Object> agent,String source,String table,List<String> columns,int count,String shape){
   String agentId=(String)agent.get("id"),ownerId=(String)agent.get("ownerId");
   // Agent row serializes identical concurrent approvals. No possibility of double consumption.
-  List<String> locked=db.query("SELECT id FROM dg_agents WHERE id=? AND enabled=1 AND revoked_at IS NULL AND expires_at>NOW(3) FOR UPDATE",(rs,i)->rs.getString(1),agentId);
+  List<String> locked=db.query("SELECT id FROM dg_agents WHERE id=? AND enabled=1 AND deleted_at IS NULL AND expires_at>NOW(3) FOR UPDATE",(rs,i)->rs.getString(1),agentId);
   if(locked.size()!=1)throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Agent is unavailable");
   List<Map<String,Object>> rules=db.queryForList("""
    SELECT id,action,approver_id AS approverId,column_name AS columnName,revision

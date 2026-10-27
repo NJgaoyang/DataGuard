@@ -281,3 +281,26 @@ test('page header is single-level with centered actions and no duplicate list he
  await expect(page.locator('.workspace>.panel>.panel-head')).toHaveCount(0);
  await expect(page.locator('.record-filters')).toBeVisible();
 });
+
+test('Agent lifecycle menus require stopping before grants and deletion',async({page})=>{
+ await page.route('**/api/agents',async route=>{
+  const entries=[agents[0],{...agents[1],enabled:false,canDelete:true},agents[2]];
+  await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(entries)});
+ });
+ await navigate(page,'Agent 管理');
+ const active=page.locator('.ant-table-tbody tr').filter({hasText:'数据分析 Agent'});
+ await active.getByRole('button',{name:/更多/}).click();
+ const editActive=page.getByRole('menuitem',{name:/编辑授权/});
+ await expect(editActive).toHaveAttribute('aria-disabled','true');
+ await expect(page.getByRole('menuitem',{name:/停用 Agent/})).toBeVisible();
+ await expect(page.getByRole('menuitem',{name:/删除 Agent/})).toHaveAttribute('aria-disabled','true');
+ await page.reload();
+ await navigate(page,'Agent 管理');
+ const stopped=page.locator('.ant-table-tbody tr').filter({hasText:'客服 Agent'});
+ await expect(stopped).toContainText('已停用');
+ await stopped.getByRole('button',{name:/更多/}).click();
+ await expect(page.getByRole('menuitem',{name:/编辑授权/})).not.toHaveAttribute('aria-disabled','true');
+ await expect(page.getByRole('menuitem',{name:/启用 Agent/})).toBeVisible();
+ await expect(page.getByRole('menuitem',{name:/删除 Agent/})).not.toHaveAttribute('aria-disabled','true');
+ await expect(page.getByText('已撤销')).toHaveCount(0);
+});

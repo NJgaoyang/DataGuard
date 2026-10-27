@@ -216,6 +216,10 @@ DeepSeek 模型 API 的 Function Calling 由**你的应用**转为上述 REST �
 
 更多资料：[REST 接口文档](docs/REST_AGENT_API.md) · [详细系统架构](docs/ARCHITECTURE.md) · [开发机真实业务联调](docs/P0_LIVE_ACCEPTANCE.md)。
 
+## Agent 两状态生命周期
+
+Agent 只有「启用」「已停用」运行状态：运行中不可编辑/删除；停用后可修改授权并软删除；Token 轮换独立管理。旧已撤销 Agent 迁移后凭据永不复活，重新启用自动签发新 Token；审批与审计历史保留。详细行为见 [Agent 生命周期](docs/AGENT_LIFECYCLE.md)。
+
 ## MCP 与 REST 统一 SQL 查询
 
 - MCP 使用 execute_sql_readonly，REST 使用 POST /queries；校验使用 validate_sql 和 POST /queries/validate。

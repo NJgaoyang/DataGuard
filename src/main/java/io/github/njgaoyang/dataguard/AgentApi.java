@@ -37,15 +37,13 @@ class AgentApi {
  }
  boolean admin(Authentication a){return a.getAuthorities().stream().anyMatch(x->x.getAuthority().equals("ROLE_ADMIN"));}
  @GetMapping List<Map<String,Object>> list(Authentication auth){
-  String filter=admin(auth)?"":" WHERE owner.username=?";
+  String filter=admin(auth)?" WHERE a.deleted_at IS NULL":" WHERE owner.username=? AND a.deleted_at IS NULL";
   String q="""
-   SELECT a.id,a.name,a.enabled,a.expires_at AS expiresAt,a.revoked_at AS revokedAt,
+   SELECT a.id,a.name,a.enabled,a.expires_at AS expiresAt,
+     a.token_reset_required AS tokenResetRequired,
      a.created_at AS createdAt,owner.id AS ownerId,owner.display_name AS ownerName,
      (SELECT MAX(r.created_at) FROM dg_requests r WHERE r.agent_id=a.id) AS lastAccess,
-     CASE WHEN a.enabled=0 AND
-       NOT EXISTS(SELECT 1 FROM dg_requests h WHERE h.agent_id=a.id) AND
-       NOT EXISTS(SELECT 1 FROM dg_rules rule WHERE rule.agent_id=a.id)
-       THEN 1 ELSE 0 END AS canDelete
+     CASE WHEN a.enabled=0 THEN 1 ELSE 0 END AS canDelete
    FROM dg_agents a JOIN dg_users owner ON owner.id=a.owner_user_id
    """+filter+" ORDER BY a.created_at DESC LIMIT 300";
   return admin(auth)?db.queryForList(q):db.queryForList(q,auth.getName());
@@ -68,65 +66,61 @@ class AgentApi {
   return Map.of("id",id,"token",token);
  }
  void own(Authentication auth,String agent){
-  List<String> owners=db.query("SELECT owner.username FROM dg_agents a JOIN dg_users owner ON owner.id=a.owner_user_id WHERE a.id=?",(rs,i)->rs.getString(1),Guard.id(agent));
+  List<String> owners=db.query("SELECT owner.username FROM dg_agents a JOIN dg_users owner ON owner.id=a.owner_user_id WHERE a.id=? AND a.deleted_at IS NULL",(rs,i)->rs.getString(1),Guard.id(agent));
   if(owners.size()!=1||(!admin(auth)&&!auth.getName().equals(owners.get(0))))throw new ResponseStatusException(HttpStatus.FORBIDDEN);
  }
+ // Never hard-delete identities: requests, approvals, rules and audit remain historically referential.
  @DeleteMapping("/{id}")
  @org.springframework.transaction.annotation.Transactional
  Map<String,Object> deleteAgent(Authentication auth,@PathVariable String id){
   Guard.admin(auth);String safe=Guard.id(id);
-  var agents=db.queryForList("SELECT id,enabled FROM dg_agents WHERE id=? FOR UPDATE",safe);
-  if(agents.isEmpty())throw new ResponseStatusException(HttpStatus.NOT_FOUND);
-  Object active=agents.get(0).get("enabled");
-  if(active instanceof Number ? ((Number)active).intValue()!=0 : Boolean.TRUE.equals(active))
-   throw new ResponseStatusException(HttpStatus.CONFLICT,"Disable Agent before deletion");
-  Number refs=db.queryForObject("SELECT (SELECT COUNT(*) FROM dg_requests WHERE agent_id=?)+(SELECT COUNT(*) FROM dg_rules WHERE agent_id=?)",Long.class,safe,safe);
-  if(refs!=null&&refs.longValue()>0)throw new ResponseStatusException(HttpStatus.CONFLICT,"Agent has historical requests or rules; revoke instead");
+  Map<String,Object> row=lockAvailable(safe);
+  if(on(row.get("enabled")))throw new ResponseStatusException(HttpStatus.CONFLICT,"Stop Agent before deletion");
+  db.update("UPDATE dg_agents SET deleted_at=NOW(3),token_hash=?,token_reset_required=1 WHERE id=?",
+   digest(newToken()),safe);
+  // Existing policy/request history remains; revoke mutable grants and outstanding authorizations.
+  db.update("UPDATE dg_requests SET status='DENIED',reason='Agent deleted',decided_at=NOW(3) WHERE agent_id=? AND status IN ('PENDING','APPROVED')",safe);
   db.update("DELETE FROM dg_agent_columns WHERE agent_id=?",safe);
   db.update("DELETE FROM dg_agent_tables WHERE agent_id=?",safe);
-  db.update("DELETE FROM dg_agents WHERE id=?",safe);
-  audit.log(auth.getName(),"AGENT_DELETED",null,safe,"SUCCESS","No historical references");
+  db.update("UPDATE dg_rules SET enabled=0 WHERE agent_id=?",safe);
+  audit.log(auth.getName(),"AGENT_DELETED",null,safe,"SUCCESS","Soft delete; history retained, grants removed");
   return Map.of("deleted",true);
+ }
+ private static boolean on(Object value){
+  return value instanceof Number n ? n.intValue()!=0 : Boolean.TRUE.equals(value);
+ }
+ private Map<String,Object> lockAvailable(String id){
+  List<Map<String,Object>> rows=db.queryForList("SELECT enabled,expires_at AS expiresAt,token_reset_required AS resetRequired FROM dg_agents WHERE id=? AND deleted_at IS NULL FOR UPDATE",id);
+  if(rows.isEmpty())throw new ResponseStatusException(HttpStatus.NOT_FOUND,"Agent not found");
+  return rows.get(0);
+ }
+ private void ensureStopped(String id){
+  if(on(lockAvailable(id).get("enabled")))
+   throw new ResponseStatusException(HttpStatus.CONFLICT,"Stop Agent before editing grants");
  }
  @PostMapping("/{id}/toggle")
  @org.springframework.transaction.annotation.Transactional
  Map<String,Object> toggleEnabled(Authentication auth,@PathVariable String id){
   Guard.admin(auth);String safe=Guard.id(id);
-  var rows=db.queryForList("SELECT enabled,revoked_at AS revokedAt FROM dg_agents WHERE id=? FOR UPDATE",safe);
-  if(rows.isEmpty())throw new ResponseStatusException(HttpStatus.NOT_FOUND);
-  if(rows.get(0).get("revokedAt")!=null)throw new ResponseStatusException(HttpStatus.CONFLICT,"Agent token was permanently revoked; create a new Agent");
-  Object stored=rows.get(0).get("enabled");
-  boolean enabled=stored instanceof Number ? ((Number)stored).intValue()!=0 : Boolean.TRUE.equals(stored);
-  db.update("UPDATE dg_agents SET enabled=? WHERE id=?",!enabled,safe);
-  audit.log(auth.getName(),enabled?"AGENT_DISABLED":"AGENT_ENABLED",null,safe,"SUCCESS","");
-  return Map.of("enabled",!enabled);
+  Map<String,Object> row=lockAvailable(safe);
+  if(on(row.get("enabled"))){
+   db.update("UPDATE dg_agents SET enabled=0 WHERE id=?",safe);
+   audit.log(auth.getName(),"AGENT_DISABLED",null,safe,"SUCCESS","");
+   return Map.of("enabled",false);
+  }
+  // Migrated revoked credentials, and genuinely expired credentials, never resurrect an old token.
+  boolean fresh=on(row.get("resetRequired"))||!expiryValid(row.get("expiresAt"));
+  if(fresh){
+   String token=newToken();
+   db.update("UPDATE dg_agents SET enabled=1,token_hash=?,token_reset_required=0,expires_at=? WHERE id=?",
+    digest(token),java.sql.Timestamp.valueOf(java.time.LocalDateTime.now().plusYears(1)),safe);
+   audit.log(auth.getName(),"AGENT_ENABLED",null,safe,"SUCCESS","Fresh Token issued; old secret invalid");
+   return Map.of("enabled",true,"token",token);
+  }
+  db.update("UPDATE dg_agents SET enabled=1 WHERE id=?",safe);
+  audit.log(auth.getName(),"AGENT_ENABLED",null,safe,"SUCCESS","");
+  return Map.of("enabled",true);
  }
- /** Reactivation never revives a revoked secret: issue a new one-time token. */
- @PostMapping("/{id}/reactivate")
- @org.springframework.transaction.annotation.Transactional
- Map<String,Object> reactivate(Authentication auth,@PathVariable String id,@RequestBody Rotate request){
-  Guard.admin(auth);String safe=Guard.id(id);
-  if(request==null||request.expiresAt()==null)throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Expiry required");
-  java.time.LocalDateTime expires;
-  try{expires=java.time.LocalDateTime.parse(request.expiresAt());}
-  catch(java.time.format.DateTimeParseException ex){throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid expiry");}
-  if(!expires.isAfter(java.time.LocalDateTime.now())||expires.isAfter(java.time.LocalDateTime.of(2099,12,31,23,59,59)))
-   throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid expiry");
-  var rows=db.queryForList("SELECT revoked_at FROM dg_agents WHERE id=? FOR UPDATE",safe);
-  if(rows.isEmpty())throw new ResponseStatusException(HttpStatus.NOT_FOUND);
-  if(rows.get(0).get("revoked_at")==null)throw new ResponseStatusException(HttpStatus.CONFLICT,"Agent is not revoked; use enable instead");
-  String token=newToken();
-  db.update("UPDATE dg_agents SET token_hash=?,expires_at=?,revoked_at=NULL,enabled=1 WHERE id=?",
-   digest(token),java.sql.Timestamp.valueOf(expires),safe);
-  audit.log(auth.getName(),"AGENT_REACTIVATED",null,safe,"SUCCESS","New token issued; old token invalid");
-  return Map.of("id",safe,"token",token);
- }
- @PostMapping("/{id}/revoke") Map<String,Object> revoke(Authentication auth,@PathVariable String id){
-  own(auth,id);db.update("UPDATE dg_agents SET revoked_at=NOW(3),enabled=0 WHERE id=?",Guard.id(id));
-  audit.log(auth.getName(),"AGENT_REVOKED",null,id,"SUCCESS","");
-  return Map.of("updated",true);
- }
-
  // One-time secret on successful rotation; previous credential becomes invalid immediately.
  @org.springframework.transaction.annotation.Transactional
  @PostMapping("/{id}/rotate")
@@ -136,10 +130,12 @@ class AgentApi {
   java.time.LocalDateTime expires;
   try{expires=java.time.LocalDateTime.parse(request.expiresAt());}catch(java.time.format.DateTimeParseException e){throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid date");}
   if(!expires.isAfter(java.time.LocalDateTime.now())||expires.isAfter(java.time.LocalDateTime.of(2099,12,31,23,59,59)))throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid expiry");
+  String safe=Guard.id(id);
+  lockAvailable(safe);
   String token=newToken();
-  int n=db.update("UPDATE dg_agents SET token_hash=?,expires_at=? WHERE id=? AND enabled=1 AND revoked_at IS NULL",
-   digest(token),java.sql.Timestamp.valueOf(expires),Guard.id(id));
-  if(n!=1)throw new ResponseStatusException(HttpStatus.CONFLICT,"Agent already revoked");
+  int n=db.update("UPDATE dg_agents SET token_hash=?,expires_at=?,token_reset_required=0 WHERE id=? AND deleted_at IS NULL",
+   digest(token),java.sql.Timestamp.valueOf(expires),safe);
+  if(n!=1)throw new ResponseStatusException(HttpStatus.NOT_FOUND,"Agent not found");
   audit.log(auth.getName(),"AGENT_TOKEN_ROTATED",null,id,"SUCCESS","");
   return Map.of("token",token,"id",Guard.id(id));
  }
@@ -150,17 +146,17 @@ class AgentApi {
  Map<String,Object> check(Authentication auth,@PathVariable String id){
   own(auth,id);String agent=Guard.id(id);
   Map<String,Object> status=db.queryForMap("""
-   SELECT a.enabled,a.expires_at AS expiresAt,a.revoked_at AS revokedAt,
+   SELECT a.enabled,a.expires_at AS expiresAt,
     u.enabled AS ownerEnabled,
     (SELECT COUNT(*) FROM dg_agent_columns c JOIN dg_source_columns sc ON
       sc.source_id=c.source_id AND sc.table_name=c.table_name AND sc.column_name=c.column_name
       JOIN dg_source_tables st ON st.source_id=c.source_id AND st.table_name=c.table_name
       JOIN dg_sources ds ON ds.id=c.source_id
       WHERE c.agent_id=a.id AND sc.enabled=1 AND st.enabled=1 AND ds.enabled=1) AS effectiveColumns
-   FROM dg_agents a JOIN dg_users u ON u.id=a.owner_user_id WHERE a.id=?
+   FROM dg_agents a JOIN dg_users u ON u.id=a.owner_user_id WHERE a.id=? AND a.deleted_at IS NULL
    """,agent);
   boolean active=Boolean.TRUE.equals(status.get("enabled"))&&
-   Boolean.TRUE.equals(status.get("ownerEnabled"))&&status.get("revokedAt")==null&&
+   Boolean.TRUE.equals(status.get("ownerEnabled"))&&
    expiryValid(status.get("expiresAt"));
   return Map.of("agentActive",active,"authorizedColumns",status.get("effectiveColumns"),
     "mcpEndpoint","/mcp","ready",active&&((Number)status.get("effectiveColumns")).intValue()>0);
@@ -175,7 +171,7 @@ class AgentApi {
  record GrantUpdate(List<GrantSelection> tables,List<String> expectedColumns){}
  @GetMapping("/{id}/grant-options") List<Map<String,Object>> grantOptions(Authentication auth,@PathVariable String id){
   Guard.admin(auth);String agent=Guard.id(id);
-  if(db.queryForObject("SELECT COUNT(*) FROM dg_agents WHERE id=?",Integer.class,agent)!=1)throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+  if(db.queryForObject("SELECT COUNT(*) FROM dg_agents WHERE id=? AND deleted_at IS NULL",Integer.class,agent)!=1)throw new ResponseStatusException(HttpStatus.NOT_FOUND);
   List<Map<String,Object>> data=db.queryForList("""
    SELECT s.id AS sourceId,s.name AS sourceName,t.table_name AS tableName,c.column_name AS columnName,
     EXISTS(SELECT 1 FROM dg_agent_columns ac WHERE ac.agent_id=? AND ac.source_id=s.id AND ac.table_name=t.table_name AND ac.column_name=c.column_name) AS selected
@@ -197,7 +193,7 @@ class AgentApi {
  Map<String,Object> replaceGrants(Authentication auth,@PathVariable String id,@RequestBody GrantUpdate in){
   Guard.admin(auth);String agent=Guard.id(id);
   if(in==null||in.tables()==null||in.tables().size()>200)throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid grants");
-  if(db.queryForList("SELECT id FROM dg_agents WHERE id=? FOR UPDATE",agent).isEmpty())throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+  ensureStopped(agent);
   List<String> current=db.query("SELECT CONCAT(source_id,'::',table_name,'::',column_name) FROM dg_agent_columns WHERE agent_id=? ORDER BY source_id,table_name,column_name",(rs,i)->rs.getString(1),agent);
   if(in.expectedColumns()==null||!current.equals(in.expectedColumns().stream().sorted().toList()))
    throw new ResponseStatusException(HttpStatus.CONFLICT,"Agent grants changed; refresh before saving");
@@ -234,8 +230,10 @@ class AgentApi {
     """,agent);
   return Map.of("stats",stats,"recent",recent);
  }
+ @org.springframework.transaction.annotation.Transactional
  @PostMapping("/{id}/tables") Map<String,Object> grantTable(Authentication auth,@PathVariable String id,@RequestBody TableGrant input){
   Guard.admin(auth);String agent=Guard.id(id),source=Guard.id(input.sourceId()),table=Guard.identifier(input.tableName());
+  ensureStopped(agent);
   Integer allowed=db.queryForObject("""
    SELECT COUNT(*) FROM dg_source_tables w JOIN dg_sources s ON s.id=w.source_id
    WHERE w.source_id=? AND w.table_name=? AND w.enabled=1 AND s.enabled=1
@@ -245,8 +243,10 @@ class AgentApi {
   audit.log(auth.getName(),"AGENT_TABLE_GRANTED",null,agent+"/"+source+"/"+table,"SUCCESS","");
   return Map.of("updated",true);
  }
+ @org.springframework.transaction.annotation.Transactional
  @PostMapping("/{id}/columns") Map<String,Object> grantColumn(Authentication auth,@PathVariable String id,@RequestBody ColumnGrant input){
   Guard.admin(auth);String agent=Guard.id(id),source=Guard.id(input.sourceId()),table=Guard.identifier(input.tableName()),column=Guard.identifier(input.columnName());
+  ensureStopped(agent);
   Integer allowed=db.queryForObject("""
    SELECT COUNT(*) FROM dg_agent_tables t JOIN dg_source_tables w ON w.source_id=t.source_id AND w.table_name=t.table_name
    JOIN dg_source_columns c ON c.source_id=t.source_id AND c.table_name=t.table_name
@@ -257,15 +257,17 @@ class AgentApi {
   audit.log(auth.getName(),"AGENT_COLUMN_GRANTED",null,agent+"/"+source+"/"+table+"/"+column,"SUCCESS","");
   return Map.of("updated",true);
  }
+ @org.springframework.transaction.annotation.Transactional
  @DeleteMapping("/{id}/tables/{source}/{table}") Map<String,Object> revokeTable(Authentication auth,@PathVariable String id,@PathVariable String source,@PathVariable String table){
-  Guard.admin(auth);
+  Guard.admin(auth);ensureStopped(Guard.id(id));
   db.update("DELETE FROM dg_agent_columns WHERE agent_id=? AND source_id=? AND table_name=?",Guard.id(id),Guard.id(source),Guard.identifier(table));
   db.update("DELETE FROM dg_agent_tables WHERE agent_id=? AND source_id=? AND table_name=?",Guard.id(id),Guard.id(source),Guard.identifier(table));
   audit.log(auth.getName(),"AGENT_TABLE_REVOKED",null,id+"/"+table,"SUCCESS","");
   return Map.of("updated",true);
  }
+ @org.springframework.transaction.annotation.Transactional
  @DeleteMapping("/{id}/columns/{source}/{table}/{column}") Map<String,Object> revokeColumn(Authentication auth,@PathVariable String id,@PathVariable String source,@PathVariable String table,@PathVariable String column){
-  Guard.admin(auth);
+  Guard.admin(auth);ensureStopped(Guard.id(id));
   db.update("DELETE FROM dg_agent_columns WHERE agent_id=? AND source_id=? AND table_name=? AND column_name=?",Guard.id(id),Guard.id(source),Guard.identifier(table),Guard.identifier(column));
   audit.log(auth.getName(),"AGENT_COLUMN_REVOKED",null,id+"/"+table+"/"+column,"SUCCESS","");
   return Map.of("updated",true);
@@ -275,7 +277,7 @@ class AgentApi {
   List<Map<String,Object>> rows=db.queryForList("""
     SELECT a.id,a.name,a.owner_user_id AS ownerId,u.username AS ownerUsername
     FROM dg_agents a JOIN dg_users u ON u.id=a.owner_user_id
-    WHERE a.token_hash=? AND a.enabled=1 AND a.revoked_at IS NULL
+    WHERE a.token_hash=? AND a.enabled=1 AND a.deleted_at IS NULL AND a.token_reset_required=0
       AND a.expires_at>NOW(3) AND u.enabled=1 AND u.must_change_password=0
     """,digest(raw));
   if(rows.size()!=1)throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Invalid Agent credential");
