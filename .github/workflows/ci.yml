@@ -35,7 +35,7 @@ jobs:
         with:
           node-version: '22'
       - name: Install frontend dependencies
-        run: cd frontend && npm install --no-audit --no-fund
+        run: cd frontend && npm ci --no-audit --no-fund
       - name: Type check and build frontend
         run: cd frontend && npm run build
       - name: Maven verification
