@@ -2,6 +2,11 @@
 import {computed,onMounted,ref,watch} from 'vue';
 import dayjs from 'dayjs';
 import {api,stamp,fail,stateName,stateColor,type DataRow} from '../api';
+import DgDataTable from '../components/DgDataTable.vue';
+import DgFilterBar from '../components/DgFilterBar.vue';
+import DgSqlViewer from '../components/DgSqlViewer.vue';
+import DgSqlEditor from '../components/DgSqlEditor.vue';
+import DgDetailPanel from '../components/DgDetailPanel.vue';
 
 const props=defineProps<{initialRecordId?:string|null;initialStatus?:string}>();
 const emit=defineEmits<{closeDetail:[];'detail-change':[value:{open:boolean;name:string}]}>();
@@ -16,6 +21,7 @@ const rows=ref<DataRow[]>([]),agents=ref<string[]>([]),sources=ref<string[]>([])
  detail=ref<DataRow|null>(null),busy=ref(false),
  currentPage=ref(1),total=ref(0),detailBusy=ref(false);
 let latestRequest=0;
+const showMonaco=ref(false);
 const pagination=computed(()=>({current:currentPage.value,pageSize:10,total:total.value,
  showSizeChanger:false,showTotal:(n:number)=>'共 '+n+' 条'}));
 const agentOptions=computed(()=>[{value:'all',label:'全部 Agent'},...agents.value.map(v=>({value:v,label:v}))]);
@@ -59,7 +65,7 @@ async function openRecord(id:string){
   detail.value=await api<DataRow>('/api/requests/'+encodeURIComponent(id));
  }catch(e){fail(e);detail.value=null}finally{detailBusy.value=false}
 }
-function closeRecord(){detail.value=null;emit('closeDetail');}
+function closeRecord(){detail.value=null;showMonaco.value=false;emit('closeDetail');}
 watch([detail,detailBusy],()=>emit('detail-change',{open:Boolean(detail.value||detailBusy.value),name:detail.value?'访问 #'+String(detail.value.id||''):''}));
 watch(()=>props.initialRecordId,id=>{if(id)void openRecord(id);else detail.value=null});
 watch(()=>props.initialStatus,next=>{draft.value.status=next||'all';query()});
@@ -67,8 +73,8 @@ onMounted(()=>{void loadOptions();void refresh();if(props.initialRecordId)void o
 defineExpose({refresh});
 </script>
 <template>
-<section v-if="detail||detailBusy" class="panel detail-page" aria-label="访问详情页面">
- <teleport to="#workspace-actions"><a-button @click="closeRecord">返回访问记录</a-button></teleport>
+<DgDetailPanel v-if="detail||detailBusy" aria-label="访问详情页面" back-label="返回访问记录" @back="closeRecord">
+ 
  <a-spin :spinning="detailBusy">
   <div v-if="detail" class="detail-content">
    <div class="drawer-heading"><strong>{{detail.tableName}} · 访问记录</strong><a-tag :color="stateColor(detail.status)">{{stateName[detail.status]||detail.status}}</a-tag></div>
@@ -80,7 +86,13 @@ defineExpose({refresh});
     <a-descriptions-item label="目标表">{{detail.tableName}}</a-descriptions-item>
     <a-descriptions-item label="请求字段">{{detail.columnsRequested}}</a-descriptions-item>
     <a-descriptions-item label="查询 SQL（已脱敏）">
-     <pre class="record-sql-full">{{detail.sqlTemplate||'历史记录未保存 SQL'}}</pre>
+     <DgSqlViewer :sql="detail.sqlTemplate"/>
+     <div v-if="detail.sqlTemplate" class="dg-sql-editor-toggle">
+      <a-button size="small" @click="showMonaco=!showMonaco">{{showMonaco?'关闭 SQL 编辑器':'代码编辑器查看'}}</a-button>
+      <span class="subtle">只读审计模板，不可直接执行</span>
+     </div>
+     <DgSqlEditor v-if="showMonaco&&detail.sqlTemplate" :model-value="detail.sqlTemplate" :read-only="true"/>
+
     </a-descriptions-item>
     <a-descriptions-item label="请求行数">{{detail.requestedRows}}</a-descriptions-item>
     <a-descriptions-item label="返回行数">{{detail.returnedRows??'—'}}</a-descriptions-item>
@@ -94,18 +106,16 @@ defineExpose({refresh});
    <p class="subtle" style="margin-top:15px">SQL 为安全审计模板，已遮蔽 SQL 字面量和绑定参数值；不保留查询结果。旧记录无法补录执行时的 SQL。</p>
   </div>
  </a-spin>
-</section>
+</DgDetailPanel>
 <section v-else class="panel">
- <div class="toolbar record-filters">
+ <DgFilterBar class="record-filters" @query="query" @reset="reset">
   <a-select v-model:value="draft.status" style="width:135px" :options="[{value:'all',label:'全部状态'},{value:'DENIED_OR_REJECTED',label:'已拒绝（含审批拒绝）'},...Object.entries(stateName).map(([value,label])=>({value,label}))]"/>
   <a-select v-model:value="draft.agent" show-search option-filter-prop="label" style="width:140px" :options="agentOptions"/>
   <a-select v-model:value="draft.source" show-search option-filter-prop="label" style="width:150px" :options="sourceOptions"/>
   <a-range-picker :value="draft.date" format="YYYY-MM-DD" value-format="YYYY-MM-DD" :placeholder="['开始日期','结束日期']" @change="onRangeChange"/>
   <a-input v-model:value="draft.search" allow-clear class="search" placeholder="搜索数据表、SQL 或请求编号"/>
-  <a-button class="record-reset-btn" @click="reset">重置</a-button>
-  <a-button type="primary" class="record-query-btn" @click="query">查询</a-button>
- </div>
- <a-table :data-source="rows" :loading="busy" row-key="id" :pagination="pagination" :scroll="{x:1350}" @change="changePage">
+ </DgFilterBar>
+ <DgDataTable :data-source="rows" :loading="busy" row-key="id" :pagination="pagination" :scroll="{x:1350}" @change="changePage">
   <a-table-column title="序号" :width="65"><template #default="{index}">{{(currentPage-1)*10+index+1}}</template></a-table-column>
   <a-table-column title="访问时间" :width="175"><template #default="{record}">{{stamp(record.createdAt)}}</template></a-table-column>
   <a-table-column title="Agent" data-index="agentName"/>
@@ -118,6 +128,6 @@ defineExpose({refresh});
   <a-table-column title="状态"><template #default="{record}"><a-tag :color="stateColor(record.status)">{{stateName[record.status]||record.status}}</a-tag></template></a-table-column>
   <a-table-column title="耗时"><template #default="{record}">{{record.durationMs==null?'—':record.durationMs+' 毫秒'}}</template></a-table-column>
   <a-table-column title="操作" :width="110"><template #default="{record}"><a-space class="table-row-actions"><a-button class="row-view-btn" @click="openRecord(record.id)">查看</a-button></a-space></template></a-table-column>
- </a-table>
+ </DgDataTable>
 </section>
 </template>
