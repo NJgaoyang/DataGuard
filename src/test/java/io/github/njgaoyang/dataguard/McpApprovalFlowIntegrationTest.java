@@ -84,6 +84,8 @@ class McpApprovalFlowIntegrationTest {
   mvc.perform(post("/api/v1/agent/queries").contentType("application/json")
       .header("Authorization","Bearer "+token).content(json.writeValueAsString(query)))
     .andExpect(status().isAccepted()).andExpect(jsonPath("$.status").value("PENDING"));
+  mvc.perform(get("/api/v1/agent/datasources").header("Authorization","bearer "+token))
+    .andExpect(status().isOk());
   mvc.perform(get("/api/v1/agent/datasources").header("Authorization","Bearer "+token))
     .andExpect(status().isOk()).andExpect(jsonPath("$[0].id").value(source));
   String requestId=pending.path("requestId").asText();

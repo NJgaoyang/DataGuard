@@ -63,7 +63,7 @@ class McpGateway {
   String allowed=System.getenv().getOrDefault("DG_ALLOWED_MCP_ORIGINS","");
   if(origin!=null&&!Arrays.asList(allowed.split(",")).contains(origin))
    return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-  String secret=bearer!=null&&bearer.startsWith("Bearer ")?bearer.substring(7):null;
+  String secret=bearer!=null&&bearer.regionMatches(true,0,"Bearer ",0,7)?bearer.substring(7):null;
   Map<String,Object> agent;
   try{agent=agents.resolve(secret);}catch(RuntimeException ex){
    return ResponseEntity.status(HttpStatus.UNAUTHORIZED)

@@ -14,7 +14,7 @@ class AgentRestController {
  private final SecurityControls controls;
  AgentRestController(AgentApi agents,McpGateway gateway,SecurityControls controls){this.agents=agents;this.gateway=gateway;this.controls=controls;}
  private Map<String,Object> identity(String bearer){
-  if(bearer==null||!bearer.startsWith("Bearer "))throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Agent token required");
+  if(bearer==null||!bearer.regionMatches(true,0,"Bearer ",0,7))throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Agent token required");
   try{return agents.resolve(bearer.substring(7));}
   catch(RuntimeException ex){throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Invalid Agent token");}
  }
