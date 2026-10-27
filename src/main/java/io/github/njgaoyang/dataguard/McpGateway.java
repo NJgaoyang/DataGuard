@@ -25,15 +25,16 @@ class McpGateway {
  private final PolicyEngine policy;
  private final Audit audit;
  private final SecurityControls securityControls;
+ private final SqlQueryService sqlQueryService;
  private final com.fasterxml.jackson.databind.ObjectMapper json;
  private final Set<String> allowedHosts;
  private final Semaphore slots;
  private final int timeoutSeconds;
- McpGateway(JdbcTemplate db,AgentApi agents,SourceApi sources,PolicyEngine policy,Audit audit,SecurityControls securityControls,BusinessReadExecutor executor,com.fasterxml.jackson.databind.ObjectMapper json,
+ McpGateway(JdbcTemplate db,AgentApi agents,SourceApi sources,PolicyEngine policy,Audit audit,SecurityControls securityControls,BusinessReadExecutor executor,SqlQueryService sqlQueryService,com.fasterxml.jackson.databind.ObjectMapper json,
    @Value("${dataguard.allowed-source-hosts:}") String hosts,
    @Value("${dataguard.max-concurrency:4}") int concurrency,
    @Value("${dataguard.query-timeout-seconds:5}") int timeoutSeconds){
-  this.db=db;this.agents=agents;this.sources=sources;this.policy=policy;this.audit=audit;this.securityControls=securityControls;this.executor=executor;this.json=json;
+  this.db=db;this.agents=agents;this.sources=sources;this.policy=policy;this.audit=audit;this.securityControls=securityControls;this.executor=executor;this.sqlQueryService=sqlQueryService;this.json=json;
   this.allowedHosts=new HashSet<>(Arrays.stream(hosts.split(",")).map(String::trim).filter(s->!s.isBlank()).toList());
   this.slots=new Semaphore(Math.max(1,Math.min(32,concurrency)));
   this.timeoutSeconds=Math.max(1,Math.min(30,timeoutSeconds));
@@ -84,7 +85,8 @@ class McpGateway {
    Map<String,Object> params=request.get("params") instanceof Map<?,?> p?(Map<String,Object>)p:Map.of();
    int requestedRows=0;
    if("tools/call".equals(method)&&params.get("name") instanceof String toolName&&Set.of("execute_readonly","count_rows","aggregate_readonly").contains(toolName)){
-    if("count_rows".equals(toolName))requestedRows=1;
+    if(Set.of("execute_sql_readonly","validate_sql").contains(toolName))requestedRows=0;
+    else if("count_rows".equals(toolName))requestedRows=1;
     else if(params.get("arguments") instanceof Map<?,?> arguments){
      Object size=arguments.get("limit");
      requestedRows=size instanceof Integer n?Math.max(0,n):10;
@@ -155,6 +157,10 @@ class McpGateway {
       "filterColumn",Map.of("type","string"),"filterValue",Map.of("type","string"),
       "limit",Map.of("type","integer","minimum",1),"offset",Map.of("type","integer","minimum",0)),
       "required",List.of("sourceId","tableName","aggregateFunction"));
+  Map<String,Object> sqlRead=Map.of("type","object","properties",Map.of(
+    "sourceId",Map.of("type","string"),"sql",Map.of("type","string"),
+    "params",Map.of("type","array","items",Map.of("type",List.of("string","number","boolean","null")))),
+    "required",List.of("sourceId","sql"));
   Map<String,Object> status=Map.of("type","object","properties",
      Map.of("requestId",Map.of("type","string")),"required",List.of("requestId"));
   return List.of(
@@ -164,6 +170,8 @@ class McpGateway {
     Map.of("name","execute_readonly","description","Read authorized rows using a paginated single-table SELECT (limit, offset); may require human approval","inputSchema",read),
     Map.of("name","count_rows","description","Count all matching rows without retrieving their values; requires approval policy and table grant","inputSchema",count),
     Map.of("name","aggregate_readonly","description","Authorized COUNT/SUM/AVG/MIN/MAX, optionally grouped by one allowed column","inputSchema",aggregate),
+    Map.of("name","validate_sql","description","Parse SQL and check table, column and function grants without execution","inputSchema",sqlRead),
+    Map.of("name","execute_sql_readonly","description","Run a bounded, audited SELECT on one source; supports calculations and authorized two-table JOIN; may require approval","inputSchema",sqlRead),
     Map.of("name","get_access_request","description","Check approval status for one pending exact query","inputSchema",status));
  }
  @SuppressWarnings("unchecked")
@@ -196,6 +204,8 @@ class McpGateway {
    case "execute_readonly" -> query(agent,args,"READ");
    case "count_rows" -> query(agent,args,"COUNT");
    case "aggregate_readonly" -> query(agent,args,"AGGREGATE");
+   case "validate_sql" -> sqlQueryService.validate(agent,args);
+   case "execute_sql_readonly" -> sqlQueryService.execute(agent,args);
    default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Unknown tool");
   };
   return result;

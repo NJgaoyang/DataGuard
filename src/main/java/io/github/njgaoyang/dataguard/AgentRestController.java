@@ -51,6 +51,16 @@ class AgentRestController {
     @RequestHeader(value="Authorization",required=false) String bearer,@PathVariable String id,@PathVariable String table){
    return call(bearer,"describe_table",Map.of("sourceId",id,"tableName",table),0);
   }
+ @PostMapping("/queries/validate") Object validateSql(@RequestHeader(value="Authorization",required=false) String bearer,
+    @RequestBody Map<String,Object> request){
+  if(request==null)throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"SQL validation request required");
+  return call(bearer,"validate_sql",request,0);
+ }
+ @PostMapping("/queries/sql") Object sqlQuery(@RequestHeader(value="Authorization",required=false) String bearer,
+    @RequestBody Map<String,Object> request){
+  if(request==null)throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"SQL query request required");
+  return call(bearer,"execute_sql_readonly",request,0);
+ }
  @GetMapping("/requests/{id}") Object request(@RequestHeader(value="Authorization",required=false) String bearer,@PathVariable String id){return call(bearer,"get_access_request",Map.of("requestId",id),0);}
 }
 
