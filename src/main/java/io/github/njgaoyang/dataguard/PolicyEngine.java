@@ -22,81 +22,22 @@ class PolicyEngine {
   final String requestId;
   Pending(String id){super("Human approval required");requestId=id;}
  }
- static String fingerprint(String agent,String source,String table,List<String> columns,int limit,String filterColumn,String filterValue,String sortColumn,String sortDirection){
-  try {
+ static String fingerprint(String agent,String source,String table,List<String> columns,int limit,String shape){
+  try{
    MessageDigest h=MessageDigest.getInstance("SHA-256");
-   for(String v:List.of(agent,source,table,String.join(",",columns),Integer.toString(limit),
-      Objects.toString(filterColumn,""),Objects.toString(filterValue,""),
-      Objects.toString(sortColumn,""),Objects.toString(sortDirection,""))){
-    byte[] data=v.getBytes(StandardCharsets.UTF_8);
-    h.update(ByteBuffer.allocate(4).putInt(data.length).array());h.update(data);
+   for(String part:List.of(agent,source,table,String.join(",",new TreeSet<>(columns)),
+      Integer.toString(limit),Objects.toString(shape,""))){
+    byte[] bytes=part.getBytes(StandardCharsets.UTF_8);
+    h.update(ByteBuffer.allocate(4).putInt(bytes.length).array());h.update(bytes);
    }
    return HexFormat.of().formatHex(h.digest());
-  }catch(Exception e){throw new IllegalStateException(e);}
- }
- /** A pre-approved request must match the future MCP read exactly (without filters/sort).
-  * It never executes SQL; consumption still requires the same Agent policy checks. */
- @Transactional
- public String preapply(Authentication auth,String agentId,String sourceId,String tableName,List<String> selected,int count){
-  String agent=Guard.id(agentId),source=Guard.id(sourceId),table=Guard.identifier(tableName);
-  if(count<1||count>200||selected==null||selected.isEmpty()||selected.size()>100)
-   throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid request dimensions");
-  List<String> columns=selected.stream().map(Guard::identifier).distinct().toList();
-  if(columns.size()!=selected.size())throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Duplicate columns");
-  List<Map<String,Object>> owners=db.queryForList("""
-   SELECT a.owner_user_id AS ownerId,u.username AS ownerName FROM dg_agents a
-    JOIN dg_users u ON u.id=a.owner_user_id WHERE a.id=? AND a.enabled=1
-    AND a.revoked_at IS NULL AND a.expires_at>NOW(3) AND u.enabled=1
-    AND u.must_change_password=0 FOR UPDATE
-   """,agent);
-  if(owners.size()!=1||(!auth.getName().equals(owners.get(0).get("ownerName"))&&!auth.getAuthorities().stream().anyMatch(x->"ROLE_ADMIN".equals(x.getAuthority()))))
-   throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Only active Agent owner can preapply");
-  List<String> granted=db.query("""
-   SELECT ac.column_name FROM dg_agent_columns ac
-    JOIN dg_agent_tables at ON at.agent_id=ac.agent_id AND at.source_id=ac.source_id AND at.table_name=ac.table_name
-    JOIN dg_source_columns sc ON sc.source_id=ac.source_id AND sc.table_name=ac.table_name AND sc.column_name=ac.column_name
-    JOIN dg_source_tables st ON st.source_id=ac.source_id AND st.table_name=ac.table_name
-    JOIN dg_sources ds ON ds.id=ac.source_id
-   WHERE ac.agent_id=? AND ac.source_id=? AND ac.table_name=?
-    AND sc.enabled=1 AND st.enabled=1 AND ds.enabled=1
-   """,(rs,i)->rs.getString(1),agent,source,table);
-  if(!new HashSet<>(granted).containsAll(columns))
-   throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Columns not granted");
-  List<Map<String,Object>> rules=db.queryForList("""
-   SELECT id,action,approver_id AS approverId,column_name AS columnName,revision
-    FROM dg_rules WHERE enabled=1 AND (source_id IS NULL OR source_id=?)
-    AND (agent_id IS NULL OR agent_id=?) AND table_name IN ('*',?)
-    AND min_rows<=? AND max_rows>=?
-   ORDER BY CASE action WHEN 'DENY' THEN 0 WHEN 'APPROVAL' THEN 1 ELSE 2 END,priority,id
-   """,source,agent,table,count,count);
-  Map<String,Object> rule=rules.stream().filter(x->x.get("columnName")==null||columns.contains(String.valueOf(x.get("columnName")))).findFirst().orElse(null);
-  if(rule==null||!"APPROVAL".equals(rule.get("action")))
-   throw new ResponseStatusException(HttpStatus.CONFLICT,"A matching approval rule is required");
-  String approver=(String)rule.get("approverId");
-  Integer approverCount=db.queryForObject("SELECT COUNT(*) FROM dg_users WHERE id=? AND enabled=1 AND must_change_password=0 AND role_code IN ('ADMIN','APPROVER') AND id<>?",Integer.class,approver,owners.get(0).get("ownerId"));
-  if(approverCount==null||approverCount!=1)throw new ResponseStatusException(HttpStatus.CONFLICT,"Independent approver unavailable");
-  String hash=fingerprint(agent,source,table,columns,count,null,null,null,null);
-  List<String> existing=db.query("""
-   SELECT id FROM dg_requests WHERE agent_id=? AND query_hash=? AND rule_id=? AND rule_revision=?
-    AND status IN ('PENDING','APPROVED') AND expires_at>NOW(3)
-   ORDER BY created_at DESC LIMIT 1 FOR UPDATE
-   """,(rs,i)->rs.getString(1),agent,hash,rule.get("id"),rule.get("revision"));
-  if(!existing.isEmpty())return existing.get(0);
-  String id=UUID.randomUUID().toString();
-  db.update("""
-   INSERT INTO dg_requests(id,agent_id,owner_id,source_id,table_name,columns_csv,requested_rows,
-    query_hash,rule_id,rule_revision,action,status,approver_id,expires_at)
-   VALUES(?,?,?,?,?,?,?,?,?,?, 'APPROVAL','PENDING',?,DATE_ADD(NOW(3),INTERVAL 24 HOUR))
-   """,id,agent,owners.get(0).get("ownerId"),source,table,String.join(",",columns),count,hash,rule.get("id"),rule.get("revision"),approver);
-  audit.log(auth.getName(),"PREAPPROVAL_REQUESTED",id,source+"/"+table,"SUCCESS","rows="+count);
-  return id;
+  }catch(Exception ex){throw new IllegalStateException(ex);}
  }
  @Transactional
- public Verdict begin(Map<String,Object> agent,String source,String table,List<String> columns,int count,
-                      String filterColumn,String filterValue,String sortColumn,String sortDirection){
+ public Verdict begin(Map<String,Object> agent,String source,String table,List<String> columns,int count,String shape,String sqlTemplate){
   String agentId=(String)agent.get("id"),ownerId=(String)agent.get("ownerId");
   // Agent row serializes identical concurrent approvals. No possibility of double consumption.
-  List<String> locked=db.query("SELECT id FROM dg_agents WHERE id=? AND enabled=1 AND revoked_at IS NULL AND expires_at>NOW(3) FOR UPDATE",(rs,i)->rs.getString(1),agentId);
+  List<String> locked=db.query("SELECT id FROM dg_agents WHERE id=? AND enabled=1 AND deleted_at IS NULL AND expires_at>NOW(3) FOR UPDATE",(rs,i)->rs.getString(1),agentId);
   if(locked.size()!=1)throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Agent is unavailable");
   List<Map<String,Object>> rules=db.queryForList("""
    SELECT id,action,approver_id AS approverId,column_name AS columnName,revision
@@ -113,7 +54,7 @@ class PolicyEngine {
    Integer enabled=db.queryForObject("SELECT COUNT(*) FROM dg_users WHERE id=? AND enabled=1 AND role_code IN ('ADMIN','APPROVER') AND must_change_password=0 AND id<>?",Integer.class,approver,ownerId);
    if(enabled!=1)action="DENY";
   }
-  String hash=fingerprint(agentId,source,table,columns,count,filterColumn,filterValue,sortColumn,sortDirection);
+  String hash=fingerprint(agentId,source,table,columns,count,shape);
   if("APPROVAL".equals(action)){
    List<Map<String,Object>> existing=db.queryForList("""
     SELECT id,status FROM dg_requests WHERE agent_id=? AND query_hash=?
@@ -123,6 +64,8 @@ class PolicyEngine {
     """,agentId,hash,rule.get("id"),rule.get("revision"));
    if(!existing.isEmpty()){
     String id=String.valueOf(existing.get(0).get("id"));
+    if(sqlTemplate!=null)
+     db.update("UPDATE dg_requests SET sql_template=? WHERE id=? AND sql_template IS NULL",sqlTemplate,id);
     if("APPROVED".equals(existing.get(0).get("status"))){
      int changed=db.update("UPDATE dg_requests SET status='EXECUTING' WHERE id=? AND status='APPROVED'",id);
      if(changed!=1)throw new ResponseStatusException(HttpStatus.CONFLICT,"Approval already used");
@@ -135,11 +78,11 @@ class PolicyEngine {
   String status=switch(action){case "ALLOW"->"EXECUTING";case "APPROVAL"->"PENDING";default->"DENIED";};
   db.update("""
    INSERT INTO dg_requests(id,agent_id,owner_id,source_id,table_name,columns_csv,requested_rows,
-      query_hash,rule_id,rule_revision,action,status,approver_id,expires_at,reason)
-   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,DATE_ADD(NOW(3),INTERVAL 24 HOUR),?)
+      query_hash,rule_id,rule_revision,action,status,approver_id,expires_at,reason,sql_template)
+   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,DATE_ADD(NOW(3),INTERVAL 24 HOUR),?,?)
    """,id,agentId,ownerId,source,table,String.join(",",columns),count,hash,
      rule==null?null:rule.get("id"),rule==null?null:rule.get("revision"),action,status,approver,
-     "DENY".equals(action)?"Unmatched or prohibited access rule":null);
+     "DENY".equals(action)?"Unmatched or prohibited access rule":null,sqlTemplate);
   if("DENY".equals(action))audit.log((String)agent.get("name"),"AGENT_READ",id,source+"/"+table,"DENIED","Denied by dynamic access rules");
   return new Verdict(action,id);
  }
@@ -199,44 +142,6 @@ class ControlApi {
  record RuleInput(String name,String sourceId,String agentId,String tableName,String columnName,
    Integer minRows,Integer maxRows,String action,String approverId,Integer priority){}
  record Decision(String reason){}
- record Preapply(String agentId,String sourceId,String tableName,List<String> columns,Integer requestedRows){}
- @GetMapping("/requests/preapply/agents")
- List<Map<String,Object>> preapplyAgents(Authentication auth){
-  return db.queryForList("""
-   SELECT a.id,a.name FROM dg_agents a JOIN dg_users u ON u.id=a.owner_user_id
-   WHERE (?=1 OR u.username=?) AND u.enabled=1 AND u.must_change_password=0 AND a.enabled=1
-     AND a.revoked_at IS NULL AND a.expires_at>NOW(3)
-   ORDER BY a.name LIMIT 300
-   """,auth.getAuthorities().stream().anyMatch(x->"ROLE_ADMIN".equals(x.getAuthority()))?1:0,auth.getName());
- }
- /** Options are restricted to effective platform AND Agent grants and the logged-in Agent owner. */
- @GetMapping("/requests/preapply/options")
- List<Map<String,Object>> preapplyOptions(Authentication auth,@RequestParam String agentId){
-  String agent=Guard.id(agentId);
-  Integer owned=db.queryForObject("""
-    SELECT COUNT(*) FROM dg_agents a JOIN dg_users u ON u.id=a.owner_user_id
-    WHERE a.id=? AND u.username=? AND u.enabled=1 AND u.must_change_password=0
-      AND a.enabled=1 AND a.revoked_at IS NULL AND a.expires_at>NOW(3)
-    """,Integer.class,agent,auth.getName());
-  if((owned==null||owned!=1)&&!auth.getAuthorities().stream().anyMatch(x->"ROLE_ADMIN".equals(x.getAuthority())))throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Only Agent owner can apply");
-  return db.queryForList("""
-    SELECT s.id AS sourceId,s.name AS sourceName,t.table_name AS tableName,c.column_name AS columnName
-    FROM dg_agent_columns c
-    JOIN dg_agent_tables t ON t.agent_id=c.agent_id AND t.source_id=c.source_id AND t.table_name=c.table_name
-    JOIN dg_source_columns sc ON sc.source_id=c.source_id AND sc.table_name=c.table_name AND sc.column_name=c.column_name
-    JOIN dg_source_tables st ON st.source_id=c.source_id AND st.table_name=c.table_name
-    JOIN dg_sources s ON s.id=c.source_id
-    WHERE c.agent_id=? AND sc.enabled=1 AND st.enabled=1 AND s.enabled=1
-    ORDER BY s.name,t.table_name,c.column_name LIMIT 1000
-    """,agent);
- }
-
- @PostMapping("/requests/preapply")
- Map<String,String> preapply(Authentication auth,@RequestBody Preapply in){
-  if(in==null||in.requestedRows()==null)throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
-  return Map.of("id",policy.preapply(auth,in.agentId(),in.sourceId(),in.tableName(),in.columns(),in.requestedRows()));
- }
-
  @GetMapping("/rules") List<Map<String,Object>> rules(Authentication auth){
   Guard.admin(auth);
   return db.queryForList("""
@@ -252,7 +157,7 @@ class ControlApi {
  @PostMapping("/rules") Map<String,Object> createRule(Authentication auth,@RequestBody RuleInput in){
   Guard.admin(auth);
   if(in==null||in.minRows()==null||in.maxRows()==null||in.priority()==null||in.minRows()<1||
-   in.maxRows()>200||in.maxRows()<in.minRows()||in.priority()<1||in.priority()>10000||
+   in.maxRows()>db.queryForObject("SELECT COALESCE(MAX(setting_value),200) FROM dg_security_settings WHERE setting_key='max_rows_per_query'",Integer.class)||in.maxRows()<in.minRows()||in.priority()<1||in.priority()>10000||
    !Set.of("ALLOW","APPROVAL","DENY").contains(in.action()))
    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid rule");
   String table="*".equals(in.tableName())?"*":Guard.identifier(in.tableName());
@@ -276,7 +181,7 @@ class ControlApi {
  public Map<String,Object> updateRule(Authentication auth,@PathVariable String id,@RequestBody RuleInput in){
   Guard.admin(auth);
   if(in==null||in.minRows()==null||in.maxRows()==null||in.priority()==null||in.minRows()<1||
-     in.maxRows()>200||in.maxRows()<in.minRows()||in.priority()<1||in.priority()>10000||
+     in.maxRows()>db.queryForObject("SELECT COALESCE(MAX(setting_value),200) FROM dg_security_settings WHERE setting_key='max_rows_per_query'",Integer.class)||in.maxRows()<in.minRows()||in.priority()<1||in.priority()>10000||
      !Set.of("ALLOW","APPROVAL","DENY").contains(in.action()))
     throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid rule");
   String safe=Guard.id(id),table="*".equals(in.tableName())?"*":Guard.identifier(in.tableName());
@@ -328,18 +233,38 @@ class ControlApi {
   return Map.of("updated",true);
  }
  @GetMapping("/requests") List<Map<String,Object>> requests(Authentication auth,@RequestParam(defaultValue="all") String scope){
-  if(!Set.of("all","pending","mine","handled").contains(scope))throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
+  if(!Set.of("all","pending","mine","handled").contains(scope))
+   throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid approval filter");
   boolean admin=auth.getAuthorities().stream().anyMatch(a->a.getAuthority().equals("ROLE_ADMIN"));
+  boolean reviewer=auth.getAuthorities().stream().anyMatch(a->a.getAuthority().equals("ROLE_APPROVER"));
+  String username=auth.getName();
   String conditions=" WHERE 1=1";
   List<Object> params=new ArrayList<>();
-  if("mine".equals(scope)){conditions+=" AND owner.username=?";params.add(auth.getName());}
-  else if("pending".equals(scope)){conditions+=" AND reviewer.username=? AND q.status='PENDING' AND q.expires_at>NOW(3)";params.add(auth.getName());}
-  else if("handled".equals(scope)){conditions+=" AND reviewer.username=? AND q.status<>'PENDING'";params.add(auth.getName());}
-  else if(!admin){conditions+=" AND owner.username=?";params.add(auth.getName());}
+  switch(scope){
+   case "all" -> {
+    // Administrators see all; other users can only see own requests.
+    if(!admin){conditions+=" AND owner.username=?";params.add(username);}
+   }
+   case "mine" -> {conditions+=" AND owner.username=?";params.add(username);}
+   case "pending" -> {
+    // ADMIN can decide any actionable request not created by them; approvers see assignments.
+    if(!admin&&!reviewer)throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Not an approver");
+    conditions+=" AND q.status='PENDING' AND q.expires_at>NOW(3) AND owner.username<>?";
+    params.add(username);
+    if(!admin){conditions+=" AND reviewer.username=?";params.add(username);}
+   }
+   case "handled" -> {
+    // Includes completed automatic ALLOW/DENY requests, not only manually reviewed records.
+    if(!admin&&!reviewer)throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Not an approver");
+    conditions+=" AND q.status NOT IN ('PENDING','EXECUTING')";
+    if(!admin){conditions+=" AND reviewer.username=?";params.add(username);}
+   }
+  }
   String sql="""
    SELECT q.id,q.created_at AS createdAt,q.expires_at AS expiresAt,
      q.finished_at AS finishedAt,q.table_name AS tableName,q.columns_csv AS columnsRequested,
      q.requested_rows AS requestedRows,q.returned_rows AS returnedRows,q.duration_ms AS durationMs,
+    q.sql_template AS sqlTemplate,
      q.status,q.action,q.reason,q.rule_id AS ruleId,q.source_id AS sourceId,s.name AS sourceName,
      a.name AS agentName,owner.username AS ownerUsername,owner.display_name AS requesterName,
      reviewer.display_name AS approverName,reviewer.username AS approverUsername,access_rule.name AS ruleName
@@ -347,12 +272,28 @@ class ControlApi {
    JOIN dg_sources s ON s.id=q.source_id JOIN dg_users owner ON owner.id=q.owner_id
    LEFT JOIN dg_users reviewer ON reviewer.id=q.approver_id
    LEFT JOIN dg_rules access_rule ON access_rule.id=q.rule_id
-   """+conditions+" ORDER BY q.created_at DESC LIMIT 300";
+   """+conditions+" ORDER BY q.created_at DESC,q.id DESC LIMIT 300";
   return db.queryForList(sql,params.toArray());
  }
 
  // Server-side pagination: access records are not limited to the newest 300 rows.
  // Both the count and page query apply exactly the same authorization predicate.
+ // Filter options come from the entire accessible request history, NOT the current page.
+ @GetMapping("/requests/filters")
+ Map<String,Object> requestFilterOptions(Authentication auth){
+  boolean admin=auth.getAuthorities().stream().anyMatch(a->a.getAuthority().equals("ROLE_ADMIN"));
+  String restriction=admin?"":" WHERE (owner.username=? OR reviewer.username=?)";
+  Object[] args=admin?new Object[]{}:new Object[]{auth.getName(),auth.getName()};
+  String joins="""
+   FROM dg_requests q JOIN dg_agents a ON a.id=q.agent_id
+   JOIN dg_sources s ON s.id=q.source_id JOIN dg_users owner ON owner.id=q.owner_id
+   LEFT JOIN dg_users reviewer ON reviewer.id=q.approver_id
+   """;
+  List<String> agents=db.queryForList("SELECT DISTINCT a.name "+joins+restriction+" ORDER BY a.name",String.class,args);
+  List<String> sources=db.queryForList("SELECT DISTINCT s.name "+joins+restriction+" ORDER BY s.name",String.class,args);
+  return Map.of("agents",agents,"sources",sources);
+ }
+
  @GetMapping("/requests/page")
  Map<String,Object> requestPage(Authentication auth,
    @RequestParam(defaultValue="1") int page,
@@ -375,9 +316,9 @@ class ControlApi {
   if(!agent.isBlank()){conditions+=" AND a.name=?";params.add(agent);}
   if(!source.isBlank()){conditions+=" AND s.name=?";params.add(source);}
   if(!search.isBlank()){
-   conditions+=" AND (q.id LIKE ? OR q.table_name LIKE ? OR a.name LIKE ? OR s.name LIKE ? OR owner.display_name LIKE ?)";
+   conditions+=" AND (q.id LIKE ? OR q.table_name LIKE ? OR a.name LIKE ? OR s.name LIKE ? OR owner.display_name LIKE ? OR q.sql_template LIKE ?)";
    String q="%"+search.replace("%","\\%").replace("_","\\_")+"%";
-   for(int i=0;i<5;i++)params.add(q);
+   for(int i=0;i<6;i++)params.add(q);
   }
   try{
    if(!from.isBlank()){
@@ -401,6 +342,7 @@ class ControlApi {
    SELECT q.id,q.created_at AS createdAt,q.expires_at AS expiresAt,
     q.finished_at AS finishedAt,q.table_name AS tableName,q.columns_csv AS columnsRequested,
     q.requested_rows AS requestedRows,q.returned_rows AS returnedRows,q.duration_ms AS durationMs,
+    q.sql_template AS sqlTemplate,
     q.status,q.action,q.reason,q.rule_id AS ruleId,q.source_id AS sourceId,s.name AS sourceName,
     a.name AS agentName,owner.username AS ownerUsername,owner.display_name AS requesterName,
     reviewer.display_name AS approverName,reviewer.username AS approverUsername,access_rule.name AS ruleName
@@ -429,6 +371,7 @@ class ControlApi {
    SELECT q.id,q.created_at AS createdAt,q.expires_at AS expiresAt,
     q.finished_at AS finishedAt,q.table_name AS tableName,q.columns_csv AS columnsRequested,
     q.requested_rows AS requestedRows,q.returned_rows AS returnedRows,q.duration_ms AS durationMs,
+    q.sql_template AS sqlTemplate,
     q.status,q.action,q.reason,q.rule_id AS ruleId,q.source_id AS sourceId,s.name AS sourceName,
     a.name AS agentName,owner.username AS ownerUsername,owner.display_name AS requesterName,
     reviewer.display_name AS approverName,reviewer.username AS approverUsername,access_rule.name AS ruleName

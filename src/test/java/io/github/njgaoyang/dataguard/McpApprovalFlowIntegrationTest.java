@@ -37,7 +37,7 @@ class McpApprovalFlowIntegrationTest {
   String body=json.writeValueAsString(Map.of(
    "jsonrpc","2.0","id",1,"method","tools/call",
    "params",Map.of("name",tool,"arguments",args)));
-  String response=mvc.perform(post("/mcp").contentType("application/json")
+  String response=mvc.perform(post("/mcp").contentType("application/json").accept("application/json","text/event-stream")
       .header("Authorization","Bearer "+token).content(body))
     .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
   return json.readTree(response);
@@ -75,45 +75,105 @@ class McpApprovalFlowIntegrationTest {
    VALUES(?,'Bulk approval',?,'orders',51,200,'APPROVAL',?,10)
    """,rule,source,approver);
 
-  Map<String,Object> query=Map.of("sourceId",source,"tableName","orders",
-    "columns",List.of("order_id","amount"),"limit",75);
-  JsonNode first=mcp(token,"execute_readonly",query);
-  assertTrue(first.path("result").path("isError").asBoolean());
+  Map<String,Object> query=Map.of("sourceId",source,
+    "sql","SELECT order_id, amount FROM orders LIMIT 75");
+  JsonNode first=mcp(token,"execute_sql_readonly",query);
+  assertFalse(first.path("result").path("isError").asBoolean());
   JsonNode pending=toolData(first);
   assertEquals("PENDING",pending.path("status").asText());
+  mvc.perform(post("/api/v1/agent/queries").contentType("application/json")
+      .header("Authorization","Bearer "+token).content(json.writeValueAsString(query)))
+    .andExpect(status().isAccepted()).andExpect(jsonPath("$.status").value("PENDING"));
+  mvc.perform(get("/api/v1/agent/datasources").header("Authorization","Bearer "+token))
+    .andExpect(status().isOk()).andExpect(jsonPath("$[0].id").value(source));
+  mvc.perform(get("/api/v1/agent/datasources/"+source+"/tables")
+    .header("Authorization","Bearer "+token)).andExpect(status().isOk());
   String requestId=pending.path("requestId").asText();
   assertEquals(36,requestId.length());
   verifyNoInteractions(business);
-  assertEquals(requestId,toolData(mcp(token,"execute_readonly",query)).path("requestId").asText());
+  assertEquals(requestId,toolData(mcp(token,"execute_sql_readonly",query)).path("requestId").asText());
   assertEquals("PENDING",toolData(mcp(token,"get_access_request",Map.of("requestId",requestId))).path("status").asText());
-
   String endpoint="/api/requests/"+requestId+"/approve";
   mvc.perform(post(endpoint).with(user(outsiderName).roles("APPROVER")).with(csrf())
      .contentType("application/json").content("{\"reason\":\"Not assigned\"}"))
     .andExpect(status().isForbidden());
   mvc.perform(post(endpoint).with(user(reviewerName).roles("APPROVER")).with(csrf())
-     .contentType("application/json").content("{\"reason\":\"Reviewed test query\"}"))
+     .contentType("application/json").content("{\"reason\":\"Reviewed SQL\"}"))
     .andExpect(status().isOk());
   assertEquals("APPROVED",toolData(mcp(token,"get_access_request",Map.of("requestId",requestId))).path("status").asText());
-
-  when(business.execute(anyMap(),anyString(),isNull(),anyList(),anySet(),eq(75),anyInt()))
+  when(business.executeDynamic(anyMap(),anyString(),anyList(),eq(75),anyInt()))
    .thenReturn(List.of(Map.of("order_id",123,"amount",456)));
-  JsonNode completed=toolData(mcp(token,"execute_readonly",query));
+  JsonNode completed=toolData(mcp(token,"execute_sql_readonly",query));
   assertEquals("SUCCESS",completed.path("status").asText(),completed.toString());
   assertEquals(1,completed.path("rowCount").asInt());
   assertEquals(123,completed.path("rows").get(0).path("order_id").asInt());
   assertEquals("SUCCESS",toolData(mcp(token,"get_access_request",Map.of("requestId",requestId))).path("status").asText());
-  verify(business,times(1)).execute(anyMap(),anyString(),isNull(),anyList(),anySet(),eq(75),anyInt());
-
-  JsonNode next=toolData(mcp(token,"execute_readonly",query));
+  verify(business,times(1)).executeDynamic(anyMap(),anyString(),anyList(),eq(75),anyInt());
+  JsonNode next=toolData(mcp(token,"execute_sql_readonly",query));
   assertEquals("PENDING",next.path("status").asText());
   assertNotEquals(requestId,next.path("requestId").asText());
-
   db.update("UPDATE dg_rules SET enabled=0,revision=revision+1 WHERE id=?",rule);
-  JsonNode denied=mcp(token,"execute_readonly",query);
-  assertEquals(-32003,denied.path("error").path("code").asInt(),denied.toString());
-  assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM dg_requests WHERE id=? AND status='SUCCESS'",Integer.class,requestId));
-  assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM dg_requests WHERE status='APPROVED' AND agent_id=?",Integer.class,agent));
-  verify(business,times(1)).execute(anyMap(),anyString(),isNull(),anyList(),anySet(),eq(75),anyInt());
+  JsonNode denied=mcp(token,"execute_sql_readonly",query);
+  assertTrue(denied.path("result").path("isError").asBoolean(),denied.toString());
+  assertEquals("ACCESS_DENIED",toolData(denied).path("code").asText());
+  verify(business,times(1)).executeDynamic(anyMap(),anyString(),anyList(),eq(75),anyInt());
+  mvc.perform(post("/api/v1/agent/queries").contentType("application/json")
+     .header("Authorization","Bearer "+token).content(json.writeValueAsString(query)))
+   .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
+  db.update("""
+   INSERT INTO dg_rules(id,name,source_id,table_name,min_rows,max_rows,action,priority)
+    VALUES(?,'SQL analytics allowed',?,'orders',1,200,'ALLOW',30)
+   """,UUID.randomUUID().toString(),source);
+  when(business.executeDynamic(anyMap(),contains("COUNT(*)"),anyList(),eq(1),anyInt()))
+   .thenReturn(List.of(Map.of("total",7L)));
+  Map<String,Object> count=Map.of("sourceId",source,"sql","SELECT COUNT(*) AS total FROM orders LIMIT 1");
+  JsonNode counted=toolData(mcp(token,"execute_sql_readonly",count));
+  assertEquals("SUCCESS",counted.path("status").asText(),counted.toString());
+  assertEquals(7,counted.path("rows").get(0).path("total").asInt());
+  mvc.perform(post("/api/v1/agent/queries").contentType("application/json")
+    .header("Authorization","Bearer "+token).content(json.writeValueAsString(count)))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.rows[0].total").value(7));
+  when(business.executeDynamic(anyMap(),contains("SUM("),anyList(),eq(10),anyInt()))
+   .thenReturn(List.of(Map.of("metric",99)));
+  Map<String,Object> aggregate=Map.of("sourceId",source,"sql","SELECT SUM(amount) AS metric FROM orders LIMIT 10");
+  JsonNode summary=toolData(mcp(token,"execute_sql_readonly",aggregate));
+  assertEquals(99,summary.path("rows").get(0).path("metric").asInt());
+  mvc.perform(post("/api/v1/agent/queries").contentType("application/json")
+    .header("Authorization","Bearer "+token).content(json.writeValueAsString(aggregate)))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.rows[0].metric").value(99));
+  // Removed operations must not remain available under either transport.
+  for(String obsolete:List.of("execute_readonly","count_rows","aggregate_readonly")){
+   JsonNode old=mcp(token,obsolete,Map.of());
+   assertTrue(old.has("error") || old.path("result").path("isError").asBoolean());
+  }
+  mvc.perform(post("/api/v1/agent/counts").header("Authorization","Bearer "+token)
+    .contentType("application/json").content("{}")).andExpect(status().isNotFound());
+  mvc.perform(post("/api/v1/agent/aggregations").header("Authorization","Bearer "+token)
+    .contentType("application/json").content("{}")).andExpect(status().isNotFound());
+  mvc.perform(post("/api/v1/agent/queries/sql").header("Authorization","Bearer "+token)
+    .contentType("application/json").content("{}")).andExpect(status().isNotFound());
+  mvc.perform(get("/mcp").header("Authorization","Bearer "+token)
+      .accept("text/event-stream")).andExpect(status().isMethodNotAllowed());
+  mvc.perform(post("/mcp").header("Authorization","Bearer "+token)
+      .contentType("application/json").accept("application/json","text/event-stream")
+      .content("{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}"))
+      .andExpect(status().isAccepted());
+  mvc.perform(post("/mcp").header("Authorization","Bearer "+token)
+      .header("Origin","https://untrusted.example").contentType("application/json")
+      .accept("application/json","text/event-stream")
+      .content("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}"))
+      .andExpect(status().isForbidden());
+  mvc.perform(post("/mcp").contentType("application/json").accept("application/json","text/event-stream").header("Authorization","Bearer "+token)
+     .header("MCP-Protocol-Version","2025-11-25").content(
+       "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-11-25\",\"capabilities\":{},\"clientInfo\":{\"name\":\"test\",\"version\":\"1.0.0\"}}}"))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.result.protocolVersion").value("2025-11-25"));
+  mvc.perform(post("/mcp").contentType("application/json").accept("application/json","text/event-stream").header("Authorization","Bearer "+token)
+     .header("MCP-Protocol-Version","2025-03-26").content(
+       "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-03-26\"}}"))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.result.protocolVersion").value("2025-03-26"));
+  mvc.perform(post("/mcp").contentType("application/json").accept("application/json","text/event-stream").header("Authorization","Bearer "+token)
+     .header("MCP-Protocol-Version","1900-01-01").content(
+       "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}"))
+   .andExpect(status().isBadRequest());
  }
 }

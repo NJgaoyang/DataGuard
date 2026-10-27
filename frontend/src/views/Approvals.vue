@@ -2,41 +2,30 @@
 import {computed,onMounted,ref,watch} from 'vue';
 import {api,stamp,match,page,fail,stateName,stateColor,type DataRow,type User} from '../api';
 const props=defineProps<{user:User;initialScope?:string;initialDetailId?:string}>();
-const tab=ref(props.initialScope||(props.user.roleCode==='ADMIN'?'all':props.user.roleCode==='READER'?'mine':'pending')),rows=ref<DataRow[]>([]),search=ref(''),detail=ref<DataRow|null>(null),approvalMode=ref(false),reason=ref(''),busy=ref(false),requestHelpOpen=ref(false),preapplyBusy=ref(false),preapplyAgents=ref<DataRow[]>([]),preapplyOptions=ref<DataRow[]>([]),preapplyLoading=ref(false),tableSearch=ref(''),preapplyForm=ref({agentId:'',sourceId:'',tableName:'',columns:[] as string[],requestedRows:50});
-const filtered=computed(()=>rows.value.filter(r=>match(r,search.value,['id','requesterName','agentName','tableName','sourceName'])));
+type ApprovalScope='all'|'pending'|'mine'|'handled';
+const allowedScopes:ApprovalScope[]=props.user.roleCode==='ADMIN'?['all','pending','mine','handled']:
+ props.user.roleCode==='READER'?['mine']:['pending','mine','handled'];
+const validScope=(value:string|undefined):value is ApprovalScope=>!!value&&allowedScopes.includes(value as ApprovalScope);
+const tab=ref<ApprovalScope>(validScope(props.initialScope)?props.initialScope:allowedScopes[0]);
+const rows=ref<DataRow[]>([]),loading=ref(false),search=ref(''),detail=ref<DataRow|null>(null),approvalMode=ref(false),reason=ref(''),busy=ref(false);
+let newestRequest=0;
+const filtered=computed(()=>rows.value.filter(r=>match(r,search.value,['id','requesterName','agentName','tableName','sourceName','columnsRequested','reason'])));
+const emptyText=computed(()=>({
+ all:'暂无申请记录',pending:'当前没有待你审批的申请',mine:'你尚未发起申请',handled:'暂无已处理记录'
+})[tab.value]);
 const canApprove=computed(()=>detail.value?.status==='PENDING'&&(detail.value.approverUsername===props.user.username||props.user.roleCode==='ADMIN')
  &&detail.value.ownerUsername!==props.user.username&&new Date(detail.value.expiresAt).getTime()>Date.now());
-const preapplyEmptyReason=computed(()=>!preapplyForm.value.agentId?'请先选择 Agent':preapplyLoading.value?'正在读取授权信息':!preapplyOptions.value.length?'该 Agent 暂无有效的数据源、表和字段授权；请先在数据源和 Agent 管理中授权':'没有匹配的数据源');
-const sourceOptions=computed(()=>[...new Map(preapplyOptions.value.map(x=>[x.sourceId,{value:x.sourceId,label:x.sourceName}])).values()]);
-const tableOptions=computed(()=>[...new Set(preapplyOptions.value.filter(x=>x.sourceId===preapplyForm.value.sourceId).map(x=>String(x.tableName)))].map(value=>({value,label:value})));
-const searchedTables=computed(()=>tableOptions.value.filter(x=>x.label.toLowerCase().includes(tableSearch.value.toLowerCase())));
-const allColumnsSelected=computed(()=>columnOptions.value.length>0&&preapplyForm.value.columns.length===columnOptions.value.length);
-const columnToggleLabel=computed(()=>allColumnsSelected.value?'取消全选':'全选');
-function toggleColumns(){preapplyForm.value.columns=allColumnsSelected.value?[]:[...columnOptions.value];}
-const columnOptions=computed(()=>preapplyOptions.value.filter(x=>x.sourceId===preapplyForm.value.sourceId&&x.tableName===preapplyForm.value.tableName).map(x=>String(x.columnName)));
-function resetTable(){preapplyForm.value.tableName='';preapplyForm.value.columns=[];}
-function changeTable(value:string){preapplyForm.value.tableName=value;preapplyForm.value.columns=[...columnOptions.value];}
-async function changeAgent(value:string){
- preapplyForm.value.agentId=value;preapplyForm.value.sourceId='';tableSearch.value='';resetTable();preapplyOptions.value=[];
- if(!value)return;
- try{preapplyLoading.value=true;preapplyOptions.value=await api<DataRow[]>('/api/requests/preapply/options?agentId='+encodeURIComponent(value));}
- catch(e){fail(e)}finally{preapplyLoading.value=false}
+async function refresh(){
+ const requestId=++newestRequest;
+ loading.value=true;
+ try{
+  const data=await api<DataRow[]>('/api/requests?scope='+encodeURIComponent(tab.value));
+  if(requestId===newestRequest)rows.value=data;
+ }catch(e){if(requestId===newestRequest){rows.value=[];fail(e)}}
+ finally{if(requestId===newestRequest)loading.value=false}
 }
-async function openPreapply(){try{
- preapplyAgents.value=await api<DataRow[]>('/api/requests/preapply/agents');
- preapplyForm.value={agentId:'',sourceId:'',tableName:'',columns:[],requestedRows:50};preapplyOptions.value=[];
- requestHelpOpen.value=true;
-}catch(e){fail(e)}}
-async function submitPreapply(){try{
- preapplyBusy.value=true;
- const parts=[...preapplyForm.value.columns];
- if(!preapplyForm.value.agentId||!preapplyForm.value.sourceId||!preapplyForm.value.tableName||!parts.length)throw Error('请选择 Agent、数据源、数据表和至少一个字段');
- const result=await api<{id:string}>('/api/requests/preapply','POST',{...preapplyForm.value,columns:parts});
- requestHelpOpen.value=false;selectTab(props.user.roleCode==='ADMIN'?'all':'mine');
- const record=await api<DataRow>('/api/requests/'+result.id);detail.value=record;approvalMode.value=false;
-}catch(e){fail(e)}finally{preapplyBusy.value=false}}
-async function refresh(){try{rows.value=await api('/api/requests?scope='+tab.value)}catch(e){fail(e)}}
-function selectTab(t:string){tab.value=t;detail.value=null;void refresh()}
+watch(tab,()=>{detail.value=null;rows.value=[];void refresh()});
+watch(()=>props.initialScope,scope=>{if(validScope(scope)&&scope!==tab.value)tab.value=scope});
 async function decide(action:'approve'|'reject'){if(!detail.value)return;try{if(!reason.value.trim())throw Error('必须填写审批意见');busy.value=true;
  await api('/api/requests/'+detail.value.id+'/'+action,'POST',{reason:reason.value.trim()});
  detail.value=null;reason.value='';await refresh()}catch(e){fail(e)}finally{busy.value=false}}
@@ -47,8 +36,7 @@ onMounted(async()=>{await refresh();if(props.initialDetailId){try{detail.value=a
 <template>
 <section v-if="!detail" class="panel">
  <div class="toolbar stack">
- <a-button type="primary" @click="openPreapply">＋ 发起访问申请</a-button>
- <a-radio-group :value="tab" button-style="solid" @change="selectTab($event.target.value)">
+ <a-radio-group v-model:value="tab" button-style="solid">
   <a-radio-button v-if="user.roleCode==='ADMIN'" value="all">全部申请</a-radio-button>
   <a-radio-button v-if="user.roleCode!=='READER'" value="pending">待我审批</a-radio-button>
   <a-radio-button value="mine">我发起的</a-radio-button>
@@ -57,7 +45,7 @@ onMounted(async()=>{await refresh();if(props.initialDetailId){try{detail.value=a
  <a-input-search v-model:value="search" class="search" allow-clear placeholder="搜索申请内容、Agent 或表名"/>
  <a-button class="toolbar-refresh" @click="refresh">刷新</a-button>
  </div>
- <a-table :data-source="filtered" :pagination="page" row-key="id" :scroll="{x:850}">
+ <a-table :data-source="filtered" :loading="loading" :locale="{emptyText}" :pagination="page" row-key="id" :scroll="{x:850}">
   <a-table-column title="申请时间"><template #default="{record}">{{stamp(record.createdAt)}}</template></a-table-column>
   <a-table-column title="申请人" data-index="requesterName"/>
   <a-table-column title="Agent" data-index="agentName"/>
@@ -96,23 +84,5 @@ onMounted(async()=>{await refresh();if(props.initialDetailId){try{detail.value=a
  </template>
 </div>
 </section>
- <a-modal v-model:open="requestHelpOpen" title="提前申请访问审批" :width="960" ok-text="提交申请" :confirm-loading="preapplyBusy" @ok="submitPreapply">
-  <a-form layout="vertical" class="preapply-form">
-   <div class="preapply-form-grid">
-    <a-form-item label="Agent" required><a-select :value="preapplyForm.agentId||undefined" placeholder="选择 Agent（管理员可选择全部）" :options="preapplyAgents.map(x=>({value:x.id,label:x.name}))" @change="changeAgent"/></a-form-item>
-    <a-form-item label="数据源" required><a-select v-model:value="preapplyForm.sourceId" placeholder="选择已授权数据源" :not-found-content="preapplyEmptyReason" :loading="preapplyLoading" :disabled="!preapplyForm.agentId" :options="sourceOptions" @change="resetTable"/></a-form-item>
-   </div>
-   <a-alert v-if="preapplyForm.agentId&&!preapplyLoading&&!preapplyOptions.length" type="warning" show-icon message="该 Agent 暂无可用于申请的有效授权" description="请先到数据源管理开放表和字段，再到 Agent 管理为这个 Agent 单独授予相同表和字段；管理员可以操作所有 Agent。" style="margin-bottom:14px"/>
-   <div class="picker-two-pane">
-    <div class="picker-tables"><div class="picker-pane-head">数据表 <span>{{tableOptions.length}}</span></div><a-input v-model:value="tableSearch" placeholder="搜索数据表" allow-clear class="picker-search"/>
-     <div class="picker-list"><button v-for="item in searchedTables" :key="item.value" type="button" class="picker-table-item" :class="{active:preapplyForm.tableName===item.value}" @click="changeTable(item.value)"><span class="picker-checkbox">{{preapplyForm.tableName===item.value?'✓':''}}</span>{{item.label}}</button><a-empty v-if="!searchedTables.length" :image="undefined" description="暂无可选数据表"/></div>
-    </div>
-    <div class="picker-columns"><div class="picker-pane-head"><span>字段 <span>{{preapplyForm.columns.length}} / {{columnOptions.length}}</span></span><a-button type="link" size="small" :disabled="!columnOptions.length" @click="toggleColumns">{{columnToggleLabel}}</a-button></div>
-     <a-checkbox-group v-if="columnOptions.length" v-model:value="preapplyForm.columns" :options="columnOptions.map(value=>({label:value,value}))" class="preapply-column-grid"/><a-empty v-else :image="undefined" description="请先选择左侧数据表"/>
-    </div>
-   </div>
-   <a-form-item label="最大读取行数" required><a-input-number v-model:value="preapplyForm.requestedRows" :min="1" :max="200"/></a-form-item>
-  </a-form>
-  <p class="subtle">仅显示当前 Agent 已授权的表和字段。选择数据表后默认勾选全部可读字段；取消勾选可缩小申请范围。实际请求需要字段顺序、行数和查询参数完全匹配。</p>
- </a-modal>
+
 </template>

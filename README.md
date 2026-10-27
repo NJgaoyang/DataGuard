@@ -8,7 +8,7 @@
 
 - **双协议**：`POST /mcp` 与 `/api/v1/agent/**` 使用相同 Agent Bearer Token、白名单、规则引擎与 JDBC 执行链。
 - **分级授权**：数据源、表、字段白名单以及 Agent 专属授权取交集；默认拒绝。
-- **只读保护**：后端生成受限单表 `SELECT`，不提供任意 SQL、DDL、DML、JOIN；每次读取最多 200 行。
+- **只读保护**：后端生成受限单表 `SELECT`，不提供任意 SQL、DDL、DML、JOIN；单次读取行数默认最多 200 行，管理员可在安全设置内调整。
 - **访问审批**：规则可设置放行、拒绝或人工审批；通过后重试完全相同的查询，单次审批不可重复消费。
 - **安全审计**：记录 Agent、请求、规则、审批和操作审计，不持久化查询返回的业务数据。
 - **管理控制台**：数据源、Agent、访问规则、审批中心、访问记录、用户和安全参数。
@@ -99,7 +99,15 @@ curl -X POST 'https://110.42.132.44/mcp' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
 ```
 
-提供五个工具：`list_datasources`（授权数据源）、`get_schema`（表）、`describe_table`（字段）、`execute_readonly`（只读查询）、`get_access_request`（审批状态）。`execute_readonly` 的主要参数为 `sourceId`、`tableName`、`columns`、`limit`，可选 `filterColumn`、`filterValue`、`sortColumn`、`sortDirection`。
+MCP 提供六个工具：list_datasources、get_schema、describe_table、validate_sql、execute_sql_readonly、get_access_request。所有查询使用统一 SQL AST 安全引擎。
+
+
+### 官方 MCP SDK 实现（Streamable HTTP）
+
+DataGuard 现在采用 **官方 MCP Java SDK 0.18.2 + Spring WebMVC Stateless Streamable HTTP**，不再使用自编写 JSON-RPC Controller。
+保留 SQL 权限、人工审批、审计、Agent Token 认证及 Origin 校验；
+不提供 SSE 推送时 GET /mcp 规范返回 405，notifications 返回 202。
+当前使用静态 Agent Bearer Token，不提供 OAuth 登录；客户端设置及实际验收状态见 [MCP 客户端接入与验收](docs/MCP_INTEROPERABILITY.md)。
 
 ## RESTful API 接入
 
@@ -108,14 +116,15 @@ curl -X POST 'https://110.42.132.44/mcp' \
 | GET | `/datasources` | 列出授权数据源 |
 | GET | `/datasources/{id}/tables` | 列出授权表 |
 | GET | `/datasources/{id}/tables/{table}/columns` | 列出授权字段 |
-| POST | `/queries` | 查询数据，最多 200 行 |
+| POST | `/queries` | 授权 SQL SELECT（包含计算和 JOIN） |
+| POST | `/queries/validate` | SQL AST 权限校验 |
 | GET | `/requests/{id}` | 获取审批状态 |
 
 ```bash
 curl -X POST 'https://110.42.132.44/api/v1/agent/queries' \
   -H "Authorization: Bearer $DATAGUARD_TOKEN" \
   -H 'Content-Type: application/json' \
-  -d '{"sourceId":"替换为数据源UUID","tableName":"orders","columns":["order_id","amount"],"limit":10}'
+  -d '{"sourceId":"替换为数据源UUID","sql":"SELECT order_id, amount FROM orders ORDER BY order_id LIMIT 10"}'
 ```
 
 REST 响应直接为 JSON 数据；命中审批时返回 `status=PENDING`、`requestId`，调用方可查询 `/requests/{id}`，审批通过后重试**完全相同**的查询。无匹配放行规则时默认拒绝。
@@ -199,10 +208,33 @@ DeepSeek 模型 API 的 Function Calling 由**你的应用**转为上述 REST �
 
 ## 权限与安全须知
 
-- 平台表/字段白名单与 Agent 授权必须同时满足；所有查询仅单表 SELECT，不接受原始 SQL。
+- 平台表/字段白名单与 Agent 授权必须同时满足；只接受经 AST 权限校验的只读 SQL SELECT。
 - 数据源账号必须是物理只读账号，数据库连接地址需在 `DG_ALLOWED_SOURCE_HOSTS` 中。
 - Token 仅展示一次，失效、停用、撤销后不能继续调用；重新激活撤销 Agent 将重新签发 Token。
 - REST 与 MCP 共用访问规则、限流、脱敏、审批与审计逻辑。审批是**单次授权**，不代表扩大 Agent 权限。
 - 业务源查询返回值不会持久化到平台审计记录。
 
 更多资料：[REST 接口文档](docs/REST_AGENT_API.md) · [详细系统架构](docs/ARCHITECTURE.md) · [开发机真实业务联调](docs/P0_LIVE_ACCEPTANCE.md)。
+
+## 访问记录筛选交互
+
+默认展示当天记录，Agent/数据源选项独立于当前页，编辑筛选或点击重置不自动查询，点击“查询”才生效。详细规则见 [访问记录筛选](docs/RECORDS_FILTERS.md)。
+
+## 访问记录 SQL 审计与列表序号
+
+新增访问记录的脱敏 SQL 摘要及详情，并在数据源、Agent 管理、访问规则、工作台和 Agent 使用情况的最近访问列表中增加序号。SQL 实际绑定参数及敏感字面量不写入审计，历史记录不会伪造 SQL。参见 [SQL 审计与序号](docs/SQL_AUDIT_AND_SEQUENCE.md)。
+
+## 审批中心四标签筛选
+
+全部申请、待我审批、我发起的、已处理分别由后端权限条件筛选，管理员的待审批与已处理列表覆盖有权处理的全部申请。连续切换标签不会被旧请求覆盖，具体定义见 [审批筛选规则](docs/APPROVAL_FILTERS.md)。
+
+## Agent 两状态生命周期
+
+Agent 只有「启用」「已停用」运行状态：运行中不可编辑/删除；停用后可修改授权并软删除；Token 轮换独立管理。旧已撤销 Agent 迁移后凭据永不复活，重新启用自动签发新 Token；审批与审计历史保留。详细行为见 [Agent 生命周期](docs/AGENT_LIFECYCLE.md)。
+
+## MCP 与 REST 统一 SQL 查询
+
+- MCP 使用 execute_sql_readonly，REST 使用 POST /queries；校验使用 validate_sql 和 POST /queries/validate。
+- 通过 SQL SELECT 支持受控 COUNT(*)、聚合、表达式和两表 JOIN，不再提供旧 READ/COUNT/AGGREGATE 三套 API。
+- 全部表、字段、函数需通过 AST 和授权校验，审批由实际 SQL 查询触发并仅允许单次消费。
+- 详见 [SQL 查询说明](docs/SQL_QUERY_V2.md) 与 [REST Agent API](docs/REST_AGENT_API.md)。

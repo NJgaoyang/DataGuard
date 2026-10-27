@@ -1,26 +1,28 @@
-# REST Agent API v1
+# DataGuard Agent REST — 唯一 SQL 查询接口
 
-MCP 与 REST 共用 Agent Bearer Token、五个 MCP 工具实现以及既有 SQL 授权、审批、审计和限流。调用方不得使用管理后台会话代替 Agent Token。
+MCP 和 REST 分别调用统一的授权目录服务、SQL 安全查询服务和审批服务，不调用彼此的协议处理器。
 
-入口：`https://110.42.132.44/api/v1/agent`。使用 HTTPS，令牌通过 `Authorization: Bearer dg_...` 发送。所有路径需要有效未停用、未撤销、未过期的 Agent Token。
+基础地址：https://110.42.132.44/api/v1/agent
+认证头：Authorization: Bearer <Agent Token>
 
-| 请求 | 路径 | 对应 MCP 工具 |
+| 方法 | 路径 | 用途 |
 |---|---|---|
-| GET | `/datasources` | list_datasources |
-| GET | `/datasources/{id}/tables` | get_schema |
-| GET | `/datasources/{id}/tables/{table}/columns` | describe_table |
-| POST | `/queries` | execute_readonly |
-| GET | `/requests/{id}` | get_access_request |
+| GET | /datasources | 已授权数据源 |
+| GET | /datasources/{id}/tables | 已授权表 |
+| GET | /datasources/{id}/tables/{table}/columns | 有权限的字段及类型、掩码、主键信息 |
+| POST | /queries/validate | 验证只读 SQL，不查询业务数据 |
+| POST | /queries | 执行 SQL SELECT |
+| GET | /requests/{id} | 查询审批状态 |
 
-请求示例：
-
-```bash
-curl -X POST 'https://110.42.132.44/api/v1/agent/queries' \
-  -H 'Authorization: Bearer dg_REPLACE_ME' \
-  -H 'Content-Type: application/json' \
-  -d '{"sourceId":"UUID","tableName":"orders","columns":["order_id","amount"],"limit":10}'
+POST /queries 请求体：
+```json
+{"sourceId":"UUID","sql":"SELECT COUNT(*) AS total FROM orders LIMIT 1","params":[]}
 ```
 
-SQL 由后端生成，只允许读取显式授权的字段，不接受任意 SQL。单次最多 200 行。命中审批时返回 `status=PENDING` 和 `requestId`，等待审批后提交完全相同的请求。REST 的数据格式是 JSON 而非 MCP text-content 封装。
+支持在同一数据源上查询、聚合、计算、GROUP BY/HAVING/ORDER BY、LIMIT/OFFSET 和授权的双表 JOIN。
+后端 AST 校验所有被引用表与字段；动态 SQL 不允许掩码字段。无法执行写操作、跨数据源 JOIN、任意子查询、CROSS JOIN 或危险函数。
+请求参数通过 JDBC PreparedStatement 绑定；使用只读账号、最大行数、查询超时、并发限制、查询审批及审计。
+需要审批时 REST 返回 HTTP 202 与 status=PENDING、requestId，需等待真实审核并用完全相同的请求重试一次。
+异常返回 4xx/5xx + status=ERROR、code 和 message。Token 不得写进 URL 或仓库。
 
-安全：查询限制、审批、审计和数据脱敏沿用 MCP。不要将 Token 写进 Git 或 URL。REST 的调用方必须通过有效 TLS 校验证书。
+管理员安全函数配置：GET/PUT /api/sql/functions。

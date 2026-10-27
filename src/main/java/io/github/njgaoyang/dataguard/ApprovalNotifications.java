@@ -65,7 +65,7 @@ class OperationsApi {
  Map<String,Object> overview(Authentication auth){
   Guard.admin(auth);
   Map<String,Object> info=new LinkedHashMap<>();
-  info.put("totalAgents",db.queryForObject("SELECT COUNT(*) FROM dg_agents WHERE enabled=1 AND revoked_at IS NULL AND expires_at>NOW(3)",Integer.class));
+  info.put("totalAgents",db.queryForObject("SELECT COUNT(*) FROM dg_agents WHERE enabled=1 AND deleted_at IS NULL AND expires_at>NOW(3)",Integer.class));
   info.put("totalSources",db.queryForObject("SELECT COUNT(*) FROM dg_sources WHERE enabled=1",Integer.class));
   info.put("pendingApprovals",db.queryForObject("SELECT COUNT(*) FROM dg_requests WHERE status='PENDING' AND expires_at>NOW(3)",Integer.class));
   info.put("readsLast24h",db.queryForObject("SELECT COUNT(*) FROM dg_requests WHERE created_at>=DATE_SUB(NOW(3),INTERVAL 1 DAY)",Integer.class));

@@ -388,12 +388,6 @@
 .app-root .toolbar.record-filters > .toolbar-refresh{margin-left:auto}
 
 /* Larger, scannable preapproval form with explicit column selection. */
-.preapply-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.preapply-fields{border:1px solid #e1e8f0;border-radius:6px;min-height:132px;max-height:265px;overflow:auto}
-.preapply-fields-head{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid #edf0f4;color:#52657d;font-size:12px}
-.preapply-column-grid{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 14px;padding:16px!important}
-.preapply-column-grid .ant-checkbox-wrapper{margin-inline-start:0!important;overflow-wrap:anywhere}
-@media(max-width:700px){.preapply-form-grid{grid-template-columns:1fr}.preapply-column-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
 /* Agent grants: compact datasource groups; details expand only on demand. */
 .agent-grant-groups{border:1px solid #e7ecf3;border-radius:7px;overflow:hidden}
@@ -494,3 +488,19 @@
 .agent-secret-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:20px}
 
 .agent-example-code{padding:16px;border:1px solid #e4e9f1;border-radius:8px;background:#f7f9fc;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7;font-size:12px;max-height:390px;overflow:auto}
+
+/* Auditable SQL templates, never raw bound values or sensitive literals. */
+.record-sql-preview {
+ display:inline-block;max-width:250px;overflow:hidden;text-overflow:ellipsis;
+ white-space:nowrap;vertical-align:middle;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;
+ font-size:12px;
+}
+.record-sql-full {
+ margin:0;padding:12px 14px;max-width:100%;
+ overflow-x:auto;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6;
+ font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;
+ border-radius:6px;background:var(--ant-color-fill-tertiary,#f5f7fa);
+}
+/* Keep explicit reset and query immediately behind records search field, without toolbar auto margin. */
+.app-root .toolbar.record-filters > .record-query-btn,
+.app-root .toolbar.record-filters > .record-reset-btn{order:0;margin-left:0;white-space:nowrap}

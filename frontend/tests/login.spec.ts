@@ -52,7 +52,7 @@ test('login form actually submits, reports invalid credentials, and opens the wo
  await expect(page.locator('nav[aria-label="主导航"]')).toBeVisible();
  expect(submissions).toHaveLength(2);
  expect(submissions[1]).toMatchObject({username:'admin',password:'correct-test-only',csrf:'browser-test-csrf'});
- await expect(page.locator('.workspace-head h1')).toHaveText('工作台');
+ await expect(page.locator('.topbar-page strong')).toHaveText('工作台');
 });
 
 test('first-login password change sends CSRF token rotated after login',async({page})=>{

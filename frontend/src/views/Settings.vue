@@ -3,7 +3,7 @@ import {computed,onMounted,ref,watch} from 'vue';
 import {api,fail,match,page,confirm,type DataRow,type User} from '../api';
 const props=defineProps<{user:User}>();
 const emit=defineEmits<{changePassword:[]}>();
-const active=ref('profile'),rows=ref<DataRow[]>([]),search=ref(''),createOpen=ref(false),userDetail=ref<DataRow|null>(null),userDetailOpen=ref(false),editUserId=ref(''),security=ref({agentCallsPerMinute:60,agentRowsPerMinute:3000}),securityBusy=ref(false),
+const active=ref('profile'),rows=ref<DataRow[]>([]),search=ref(''),createOpen=ref(false),userDetail=ref<DataRow|null>(null),userDetailOpen=ref(false),editUserId=ref(''),security=ref({agentCallsPerMinute:60,agentRowsPerMinute:3000,maxRowsPerQuery:200}),securityBusy=ref(false),
  form=ref({username:'',displayName:'',roleCode:'READER',password:''});
 async function loadSecurity(){try{security.value=await api('/api/security/settings')}catch(e){fail(e)}}
 async function saveSecurity(){try{securityBusy.value=true;await api('/api/security/settings','PUT',security.value);await loadSecurity()}catch(e){fail(e)}finally{securityBusy.value=false}}
@@ -47,14 +47,15 @@ onMounted(()=>void refresh());defineExpose({refresh});
    <section class="panel"><div class="panel-head"><h2>安全参数</h2></div>
     <a-form layout="vertical" style="padding:14px;max-width:480px">
      <a-form-item label="每 Agent 每分钟最大调用次数（1～60）"><a-input-number v-model:value="security.agentCallsPerMinute" :min="1" :max="60" style="width:180px"/></a-form-item>
-     <a-form-item label="每 Agent 每分钟累计申请行数（1～3000）"><a-input-number v-model:value="security.agentRowsPerMinute" :min="1" :max="3000" style="width:180px"/></a-form-item>
+     <a-form-item label="每 Agent 每分钟累计申请行数（1～300000）"><a-input-number v-model:value="security.agentRowsPerMinute" :min="1" :max="300000" style="width:180px"/></a-form-item>
+     <a-form-item label="单次最大读取行数（不得超过分钟行数额度）"><a-input-number v-model:value="security.maxRowsPerQuery" :min="1" :max="100000" style="width:180px"/></a-form-item>
      <a-button type="primary" :loading="securityBusy" @click="saveSecurity">保存安全参数</a-button>
-     <p class="subtle" style="margin-top:12px">安全参数只允许收紧默认限额，保存后对后续 MCP 请求立即生效。</p>
+     <p class="subtle" style="margin-top:12px">每分钟最多 60 次调用；可调整分钟累计行数和单次上限，单次上限不得高于分钟行数额度，保存后对 MCP 与 REST 同时生效。</p>
     </a-form>
     <a-descriptions :column="1" bordered style="padding:14px">
      <a-descriptions-item label="数据库访问">仅 MySQL / StarRocks 只读账号</a-descriptions-item>
      <a-descriptions-item label="授权方式">平台表字段白名单 ∩ Agent 授权</a-descriptions-item>
-     <a-descriptions-item label="单次安全上限">200 行</a-descriptions-item>
+     <a-descriptions-item label="单次安全上限">{{security.maxRowsPerQuery}} 行</a-descriptions-item>
      <a-descriptions-item label="未匹配规则">默认拒绝</a-descriptions-item>
      <a-descriptions-item label="审批机制">指定真实系统审批人，不允许自己审批</a-descriptions-item>
     </a-descriptions>

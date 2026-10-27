@@ -2,6 +2,8 @@
 import {computed,onMounted,ref,watch} from 'vue';
 import {api,match,page,fail,confirm,type DataRow} from '../api';
 const props=defineProps<{initialDetailId?:string}>();
+const maxRowsPerQuery=ref(200);
+async function loadQueryLimit(){try{const limits=await api<{maxRowsPerQuery:number}>('/api/security/limits');maxRowsPerQuery.value=limits.maxRowsPerQuery}catch(e){fail(e)}}
 const rows=ref<DataRow[]>([]),search=ref(''),selected=ref<DataRow|null>(null),tab=ref('fields'),
   sourceOpen=ref(false),viewMode=ref<'view'|'edit'>('view'),form=ref({name:'',type:'MYSQL',host:'',port:3306,databaseName:'',username:'',password:''}),
   tables=ref<DataRow[]>([]),columns=ref<DataRow[]>([]),activeTable=ref(''),newTable=ref(''),newColumn=ref(''),busy=ref(false),connectBusy=ref(false),connectResult=ref<DataRow|null>(null),credentialOpen=ref(false),tableSearch=ref(''),selectedFields=ref<string[]>([]),credentialForm=ref({username:'',password:''});
@@ -88,12 +90,13 @@ async function toggleMask(column:string){
 async function removeColumn(column:string){if(!selected.value)return;try{await api('/api/sources/'+selected.value.id+'/tables/'+activeTable.value+'/columns/'+column,'DELETE');await loadColumns(activeTable.value)}catch(e){fail(e)}}
 const emit=defineEmits<{'detail-change':[value:{open:boolean;name:string;id:string}]}>();
 watch(selected,value=>emit('detail-change',{open:Boolean(value),name:String(value?.name||''),id:String(value?.id||'')}));
-onMounted(async()=>{await refresh();const row=rows.value.find(x=>x.id===props.initialDetailId);if(row)await open(row,'view')});defineExpose({refresh});
+onMounted(async()=>{await loadQueryLimit();await refresh();const row=rows.value.find(x=>x.id===props.initialDetailId);if(row)await open(row,'view')});defineExpose({refresh});
 </script>
 <template>
 <section v-if="!selected" class="panel">
  <div class="toolbar"><a-button type="primary" @click="create">＋ 新增数据源</a-button><a-input-search class="search" v-model:value="search" allow-clear placeholder="搜索数据库名称、类型或主机"/><a-button class="toolbar-refresh" @click="refresh">刷新</a-button></div>
  <a-table :data-source="filtered" row-key="id" :pagination="page" :scroll="{x:740}">
+ <a-table-column title="序号" :width="72"><template #default="{record}">{{filtered.findIndex(item=>item.id===record.id)+1}}</template></a-table-column>
   <a-table-column title="名称"><template #default="{record}"><a-button type="link" class="name-link" @click="open(record,'view')">{{record.name}}</a-button></template></a-table-column>
   <a-table-column title="类型" data-index="type"/>
   <a-table-column title="主机地址"><template #default="{record}">{{record.host}}:{{record.port}}</template></a-table-column>
@@ -143,7 +146,7 @@ onMounted(async()=>{await refresh();const row=rows.value.find(x=>x.id===props.in
     <div v-if="viewMode==='edit'" class="source-grant-footer"><span class="subtle">勾选表或字段后，点击保存才会更新权限。</span><a-button type="primary" :loading="fieldsBusy" :disabled="!dirtyGrants" @click="saveGrants">保存</a-button></div>
    </a-tab-pane>
    <a-tab-pane key="limit" tab="访问限制"><a-descriptions :column="1" bordered size="small">
-    <a-descriptions-item label="平台安全上限">200 行 / 次</a-descriptions-item>
+    <a-descriptions-item label="平台安全上限">{{maxRowsPerQuery}} 行 / 次</a-descriptions-item>
     <a-descriptions-item label="实际规则">在访问规则中配置放行、审批和拒绝区间</a-descriptions-item>
    </a-descriptions></a-tab-pane>
   </a-tabs>
