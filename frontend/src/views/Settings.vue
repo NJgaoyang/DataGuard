@@ -47,10 +47,10 @@ onMounted(()=>void refresh());defineExpose({refresh});
    <section class="panel"><div class="panel-head"><h2>安全参数</h2></div>
     <a-form layout="vertical" style="padding:14px;max-width:480px">
      <a-form-item label="每 Agent 每分钟最大调用次数（1～60）"><a-input-number v-model:value="security.agentCallsPerMinute" :min="1" :max="60" style="width:180px"/></a-form-item>
-     <a-form-item label="每 Agent 每分钟累计申请行数（1～3000）"><a-input-number v-model:value="security.agentRowsPerMinute" :min="1" :max="3000" style="width:180px"/></a-form-item>
-     <a-form-item label="单次最大读取行数（默认 200）"><a-input-number v-model:value="security.maxRowsPerQuery" :min="1" style="width:180px"/></a-form-item>
+     <a-form-item label="每 Agent 每分钟累计申请行数（1～300000）"><a-input-number v-model:value="security.agentRowsPerMinute" :min="1" :max="300000" style="width:180px"/></a-form-item>
+     <a-form-item label="单次最大读取行数（不得超过分钟行数额度）"><a-input-number v-model:value="security.maxRowsPerQuery" :min="1" :max="100000" style="width:180px"/></a-form-item>
      <a-button type="primary" :loading="securityBusy" @click="saveSecurity">保存安全参数</a-button>
-     <p class="subtle" style="margin-top:12px">安全参数只允许收紧默认上限，保存后对后续 MCP 与 REST 查询立即生效。</p>
+     <p class="subtle" style="margin-top:12px">每分钟最多 60 次调用；可调整分钟累计行数和单次上限，单次上限不得高于分钟行数额度，保存后对 MCP 与 REST 同时生效。</p>
     </a-form>
     <a-descriptions :column="1" bordered style="padding:14px">
      <a-descriptions-item label="数据库访问">仅 MySQL / StarRocks 只读账号</a-descriptions-item>

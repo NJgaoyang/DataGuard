@@ -8,7 +8,7 @@
 
 - **双协议**：`POST /mcp` 与 `/api/v1/agent/**` 使用相同 Agent Bearer Token、白名单、规则引擎与 JDBC 执行链。
 - **分级授权**：数据源、表、字段白名单以及 Agent 专属授权取交集；默认拒绝。
-- **只读保护**：后端生成受限单表 `SELECT`，不提供任意 SQL、DDL、DML、JOIN；每次读取最多 200 行。
+- **只读保护**：后端生成受限单表 `SELECT`，不提供任意 SQL、DDL、DML、JOIN；单次读取行数默认最多 200 行，管理员可在安全设置内调整。
 - **访问审批**：规则可设置放行、拒绝或人工审批；通过后重试完全相同的查询，单次审批不可重复消费。
 - **安全审计**：记录 Agent、请求、规则、审批和操作审计，不持久化查询返回的业务数据。
 - **管理控制台**：数据源、Agent、访问规则、审批中心、访问记录、用户和安全参数。
@@ -99,7 +99,7 @@ curl -X POST 'https://110.42.132.44/mcp' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
 ```
 
-提供五个工具：`list_datasources`（授权数据源）、`get_schema`（表）、`describe_table`（字段）、`execute_readonly`（只读查询）、`get_access_request`（审批状态）。`execute_readonly` 的主要参数为 `sourceId`、`tableName`、`columns`、`limit`，可选 `filterColumn`、`filterValue`、`sortColumn`、`sortDirection`。
+提供七个工具：`list_datasources`（授权数据源）、`get_schema`（表）、`describe_table`（字段）、`execute_readonly`（只读查询）、`get_access_request`（审批状态）、`count_rows`（总行数）、`aggregate_readonly`（受控聚合）。`execute_readonly` 的主要参数为 `sourceId`、`tableName`、`columns`、`limit`，可选 `filterColumn`、`filterValue`、`sortColumn`、`sortDirection`。
 
 ## RESTful API 接入
 
@@ -108,8 +108,11 @@ curl -X POST 'https://110.42.132.44/mcp' \
 | GET | `/datasources` | 列出授权数据源 |
 | GET | `/datasources/{id}/tables` | 列出授权表 |
 | GET | `/datasources/{id}/tables/{table}/columns` | 列出授权字段 |
-| POST | `/queries` | 查询数据，最多 200 行 |
+| POST | `/queries` | 受控查询（支持 limit、offset，默认最多 200 行） |
 | GET | `/requests/{id}` | 获取审批状态 |
+| POST | `/counts` | 授权表行数统计 |
+| POST | `/aggregations` | COUNT/SUM/AVG/MIN/MAX 及分组聚合 |
+| GET | `/datasources/{id}/tables/{table}/metadata` | 授权字段类型和主键信息 |
 
 ```bash
 curl -X POST 'https://110.42.132.44/api/v1/agent/queries' \
@@ -206,3 +209,13 @@ DeepSeek 模型 API 的 Function Calling 由**你的应用**转为上述 REST �
 - 业务源查询返回值不会持久化到平台审计记录。
 
 更多资料：[REST 接口文档](docs/REST_AGENT_API.md) · [详细系统架构](docs/ARCHITECTURE.md) · [开发机真实业务联调](docs/P0_LIVE_ACCEPTANCE.md)。
+
+## MCP 与 REST 查询语义（新增）
+
+- `execute_readonly` / `POST /queries`：选择已授权字段，支持 `limit`、`offset`、单列等值筛选和排序。
+- `count_rows` / `POST /counts`：返回总行数，不枚举表中的全部记录；仍需命中允许或审批规则。
+- `aggregate_readonly` / `POST /aggregations`：仅支持预定义的聚合函数以及最多一个已授权分组字段；禁止任意 SQL。
+- `describe_table` / `GET .../metadata`：返回授权字段名称、数据类型、可空性、主键信息和脱敏标志。
+- 提前申请审批支持筛选、排序和偏移量，必须与实际读取请求完全一致。字段顺序规范化，不会因调用方传入顺序不同而失配。
+- REST 返回 HTTP 202 表示等待审批；MCP 将 PENDING 视为正常工具结果（`isError=false`），工具执行失败才标记 `isError=true`。
+- 每分钟累计行数额度可由管理员提高至 300000，单次行数最多 100000 且不得超过每分钟行数额度。默认分钟行数 3000、单次 200。

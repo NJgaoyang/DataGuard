@@ -4,7 +4,7 @@ import {api,stamp,match,page,fail,stateName,stateColor,type DataRow,type User} f
 const props=defineProps<{user:User;initialScope?:string;initialDetailId?:string}>();
 const maxRowsPerQuery=ref(200);
 async function loadQueryLimit(){try{const limits=await api<{maxRowsPerQuery:number}>('/api/security/limits');maxRowsPerQuery.value=limits.maxRowsPerQuery}catch(e){fail(e)}}
-const tab=ref(props.initialScope||(props.user.roleCode==='ADMIN'?'all':props.user.roleCode==='READER'?'mine':'pending')),rows=ref<DataRow[]>([]),search=ref(''),detail=ref<DataRow|null>(null),approvalMode=ref(false),reason=ref(''),busy=ref(false),requestHelpOpen=ref(false),preapplyBusy=ref(false),preapplyAgents=ref<DataRow[]>([]),preapplyOptions=ref<DataRow[]>([]),preapplyLoading=ref(false),tableSearch=ref(''),preapplyForm=ref({agentId:'',sourceId:'',tableName:'',columns:[] as string[],requestedRows:50});
+const tab=ref(props.initialScope||(props.user.roleCode==='ADMIN'?'all':props.user.roleCode==='READER'?'mine':'pending')),rows=ref<DataRow[]>([]),search=ref(''),detail=ref<DataRow|null>(null),approvalMode=ref(false),reason=ref(''),busy=ref(false),requestHelpOpen=ref(false),preapplyBusy=ref(false),preapplyAgents=ref<DataRow[]>([]),preapplyOptions=ref<DataRow[]>([]),preapplyLoading=ref(false),tableSearch=ref(''),preapplyForm=ref({agentId:'',sourceId:'',tableName:'',columns:[] as string[],requestedRows:50,filterColumn:'',filterValue:'',sortColumn:'',sortDirection:'ASC',offset:0});
 const filtered=computed(()=>rows.value.filter(r=>match(r,search.value,['id','requesterName','agentName','tableName','sourceName'])));
 const canApprove=computed(()=>detail.value?.status==='PENDING'&&(detail.value.approverUsername===props.user.username||props.user.roleCode==='ADMIN')
  &&detail.value.ownerUsername!==props.user.username&&new Date(detail.value.expiresAt).getTime()>Date.now());
@@ -16,8 +16,12 @@ const allColumnsSelected=computed(()=>columnOptions.value.length>0&&preapplyForm
 const columnToggleLabel=computed(()=>allColumnsSelected.value?'取消全选':'全选');
 function toggleColumns(){preapplyForm.value.columns=allColumnsSelected.value?[]:[...columnOptions.value];}
 const columnOptions=computed(()=>preapplyOptions.value.filter(x=>x.sourceId===preapplyForm.value.sourceId&&x.tableName===preapplyForm.value.tableName).map(x=>String(x.columnName)));
-function resetTable(){preapplyForm.value.tableName='';preapplyForm.value.columns=[];}
-function changeTable(value:string){preapplyForm.value.tableName=value;preapplyForm.value.columns=[...columnOptions.value];}
+function resetTable(){preapplyForm.value.tableName='';preapplyForm.value.columns=[];
+ preapplyForm.value.filterColumn='';preapplyForm.value.filterValue='';
+ preapplyForm.value.sortColumn='';preapplyForm.value.sortDirection='ASC';preapplyForm.value.offset=0;}
+function changeTable(value:string){preapplyForm.value.tableName=value;preapplyForm.value.columns=[...columnOptions.value];
+ preapplyForm.value.filterColumn='';preapplyForm.value.filterValue='';
+ preapplyForm.value.sortColumn='';preapplyForm.value.sortDirection='ASC';preapplyForm.value.offset=0;}
 async function changeAgent(value:string){
  preapplyForm.value.agentId=value;preapplyForm.value.sourceId='';tableSearch.value='';resetTable();preapplyOptions.value=[];
  if(!value)return;
@@ -26,14 +30,21 @@ async function changeAgent(value:string){
 }
 async function openPreapply(){try{
  preapplyAgents.value=await api<DataRow[]>('/api/requests/preapply/agents');
- preapplyForm.value={agentId:'',sourceId:'',tableName:'',columns:[],requestedRows:50};preapplyOptions.value=[];
+ preapplyForm.value={agentId:'',sourceId:'',tableName:'',columns:[],requestedRows:50,filterColumn:'',filterValue:'',sortColumn:'',sortDirection:'ASC',offset:0};preapplyOptions.value=[];
  requestHelpOpen.value=true;
 }catch(e){fail(e)}}
 async function submitPreapply(){try{
  preapplyBusy.value=true;
  const parts=[...preapplyForm.value.columns];
  if(!preapplyForm.value.agentId||!preapplyForm.value.sourceId||!preapplyForm.value.tableName||!parts.length)throw Error('请选择 Agent、数据源、数据表和至少一个字段');
- const result=await api<{id:string}>('/api/requests/preapply','POST',{...preapplyForm.value,columns:parts});
+ if(preapplyForm.value.filterColumn&&!preapplyForm.value.filterValue)throw Error('筛选字段需要填写筛选值');
+ const result=await api<{id:string}>('/api/requests/preapply','POST',{
+  ...preapplyForm.value,columns:parts,
+  filterColumn:preapplyForm.value.filterColumn||null,
+  filterValue:preapplyForm.value.filterColumn?preapplyForm.value.filterValue:null,
+  sortColumn:preapplyForm.value.sortColumn||null,
+  sortDirection:preapplyForm.value.sortColumn?preapplyForm.value.sortDirection:null
+ });
  requestHelpOpen.value=false;selectTab(props.user.roleCode==='ADMIN'?'all':'mine');
  const record=await api<DataRow>('/api/requests/'+result.id);detail.value=record;approvalMode.value=false;
 }catch(e){fail(e)}finally{preapplyBusy.value=false}}
@@ -114,6 +125,11 @@ onMounted(async()=>{await loadQueryLimit();await refresh();if(props.initialDetai
     </div>
    </div>
    <a-form-item label="最大读取行数" required><a-input-number v-model:value="preapplyForm.requestedRows" :min="1" :max="maxRowsPerQuery"/></a-form-item>
+   <a-form-item label="起始偏移量（可选，默认 0）"><a-input-number v-model:value="preapplyForm.offset" :min="0" :max="1000000"/></a-form-item>
+   <a-form-item label="筛选字段（可选）"><a-select v-model:value="preapplyForm.filterColumn" allow-clear placeholder="不筛选" :options="columnOptions.map(value=>({value,label:value}))"/></a-form-item>
+   <a-form-item v-if="preapplyForm.filterColumn" label="筛选值"><a-input v-model:value="preapplyForm.filterValue" :maxlength="256"/></a-form-item>
+   <a-form-item label="排序字段（可选）"><a-select v-model:value="preapplyForm.sortColumn" allow-clear placeholder="不排序" :options="columnOptions.map(value=>({value,label:value}))"/></a-form-item>
+   <a-form-item v-if="preapplyForm.sortColumn" label="排序方向"><a-radio-group v-model:value="preapplyForm.sortDirection"><a-radio-button value="ASC">升序</a-radio-button><a-radio-button value="DESC">降序</a-radio-button></a-radio-group></a-form-item>
   </a-form>
   <p class="subtle">仅显示当前 Agent 已授权的表和字段。选择数据表后默认勾选全部可读字段；取消勾选可缩小申请范围。实际请求需要字段顺序、行数和查询参数完全匹配。</p>
  </a-modal>

@@ -78,9 +78,16 @@ class McpApprovalFlowIntegrationTest {
   Map<String,Object> query=Map.of("sourceId",source,"tableName","orders",
     "columns",List.of("order_id","amount"),"limit",75);
   JsonNode first=mcp(token,"execute_readonly",query);
-  assertTrue(first.path("result").path("isError").asBoolean());
+  assertFalse(first.path("result").path("isError").asBoolean(),"PENDING is a business result, not a tool error");
   JsonNode pending=toolData(first);
   assertEquals("PENDING",pending.path("status").asText());
+  mvc.perform(post("/api/v1/agent/queries").contentType("application/json")
+      .header("Authorization","Bearer "+token).content(json.writeValueAsString(query)))
+    .andExpect(status().isAccepted()).andExpect(jsonPath("$.status").value("PENDING"));
+  mvc.perform(get("/api/v1/agent/datasources").header("Authorization","bearer "+token))
+    .andExpect(status().isOk());
+  mvc.perform(get("/api/v1/agent/datasources").header("Authorization","Bearer "+token))
+    .andExpect(status().isOk()).andExpect(jsonPath("$[0].id").value(source));
   String requestId=pending.path("requestId").asText();
   assertEquals(36,requestId.length());
   verifyNoInteractions(business);
@@ -111,9 +118,50 @@ class McpApprovalFlowIntegrationTest {
 
   db.update("UPDATE dg_rules SET enabled=0,revision=revision+1 WHERE id=?",rule);
   JsonNode denied=mcp(token,"execute_readonly",query);
-  assertEquals(-32003,denied.path("error").path("code").asInt(),denied.toString());
+  assertTrue(denied.path("result").path("isError").asBoolean(),denied.toString());
+  assertEquals("ACCESS_DENIED",toolData(denied).path("code").asText());
   assertEquals(1,db.queryForObject("SELECT COUNT(*) FROM dg_requests WHERE id=? AND status='SUCCESS'",Integer.class,requestId));
   assertEquals(0,db.queryForObject("SELECT COUNT(*) FROM dg_requests WHERE status='APPROVED' AND agent_id=?",Integer.class,agent));
   verify(business,times(1)).execute(anyMap(),anyString(),isNull(),anyList(),anySet(),eq(75),anyInt());
+
+  // REST and MCP share the same policy, including structured business errors.
+  mvc.perform(post("/api/v1/agent/queries").contentType("application/json")
+     .header("Authorization","Bearer "+token).content(json.writeValueAsString(query)))
+   .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
+
+  // A new allow rule permits aggregation and count through both protocols.
+  db.update("""
+   INSERT INTO dg_rules(id,name,source_id,table_name,min_rows,max_rows,action,priority)
+    VALUES(?,'Allow bounded analytics',?,'orders',1,200,'ALLOW',30)
+   """,UUID.randomUUID().toString(),source);
+  when(business.execute(anyMap(),contains("COUNT(*)"),isNull(),eq(List.of("total")),anySet(),eq(1),anyInt()))
+   .thenReturn(List.of(Map.of("total",7L)));
+  JsonNode counted=toolData(mcp(token,"count_rows",Map.of("sourceId",source,"tableName","orders")));
+  assertEquals("SUCCESS",counted.path("status").asText(),counted.toString());
+  assertEquals(7,counted.path("total").asInt());
+  mvc.perform(post("/api/v1/agent/counts").contentType("application/json")
+    .header("Authorization","Bearer "+token).content(
+      json.writeValueAsString(Map.of("sourceId",source,"tableName","orders"))))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.total").value(7));
+
+  when(business.execute(anyMap(),contains("SUM("),isNull(),eq(List.of("metric")),anySet(),eq(10),anyInt()))
+   .thenReturn(List.of(Map.of("metric",99)));
+  JsonNode summary=toolData(mcp(token,"aggregate_readonly",Map.of("sourceId",source,"tableName","orders",
+    "aggregateFunction","SUM","aggregateColumn","amount","limit",10)));
+  assertEquals(99,summary.path("rows").get(0).path("metric").asInt());
+  mvc.perform(post("/api/v1/agent/aggregations").contentType("application/json")
+    .header("Authorization","Bearer "+token).content(
+      json.writeValueAsString(Map.of("sourceId",source,"tableName","orders",
+        "aggregateFunction","SUM","aggregateColumn","amount","limit",10))))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.rows[0].metric").value(99));
+
+  mvc.perform(post("/mcp").contentType("application/json").header("Authorization","Bearer "+token)
+     .header("MCP-Protocol-Version","2025-03-26").content(
+       "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-03-26\"}}"))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.result.protocolVersion").value("2025-03-26"));
+  mvc.perform(post("/mcp").contentType("application/json").header("Authorization","Bearer "+token)
+     .header("MCP-Protocol-Version","1900-01-01").content(
+       "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}"))
+   .andExpect(status().isBadRequest());
  }
 }
