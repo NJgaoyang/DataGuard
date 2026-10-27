@@ -216,6 +216,10 @@ DeepSeek 模型 API 的 Function Calling 由**你的应用**转为上述 REST �
 
 更多资料：[REST 接口文档](docs/REST_AGENT_API.md) · [详细系统架构](docs/ARCHITECTURE.md) · [开发机真实业务联调](docs/P0_LIVE_ACCEPTANCE.md)。
 
+## 审批中心四标签筛选
+
+全部申请、待我审批、我发起的、已处理分别由后端权限条件筛选，管理员的待审批与已处理列表覆盖有权处理的全部申请。连续切换标签不会被旧请求覆盖，具体定义见 [审批筛选规则](docs/APPROVAL_FILTERS.md)。
+
 ## Agent 两状态生命周期
 
 Agent 只有「启用」「已停用」运行状态：运行中不可编辑/删除；停用后可修改授权并软删除；Token 轮换独立管理。旧已撤销 Agent 迁移后凭据永不复活，重新启用自动签发新 Token；审批与审计历史保留。详细行为见 [Agent 生命周期](docs/AGENT_LIFECYCLE.md)。

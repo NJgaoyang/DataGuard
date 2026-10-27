@@ -2,12 +2,30 @@
 import {computed,onMounted,ref,watch} from 'vue';
 import {api,stamp,match,page,fail,stateName,stateColor,type DataRow,type User} from '../api';
 const props=defineProps<{user:User;initialScope?:string;initialDetailId?:string}>();
-const tab=ref(props.initialScope||(props.user.roleCode==='ADMIN'?'all':props.user.roleCode==='READER'?'mine':'pending')),rows=ref<DataRow[]>([]),search=ref(''),detail=ref<DataRow|null>(null),approvalMode=ref(false),reason=ref(''),busy=ref(false);
-const filtered=computed(()=>rows.value.filter(r=>match(r,search.value,['id','requesterName','agentName','tableName','sourceName'])));
+type ApprovalScope='all'|'pending'|'mine'|'handled';
+const allowedScopes:ApprovalScope[]=props.user.roleCode==='ADMIN'?['all','pending','mine','handled']:
+ props.user.roleCode==='READER'?['mine']:['pending','mine','handled'];
+const validScope=(value:string|undefined):value is ApprovalScope=>!!value&&allowedScopes.includes(value as ApprovalScope);
+const tab=ref<ApprovalScope>(validScope(props.initialScope)?props.initialScope:allowedScopes[0]);
+const rows=ref<DataRow[]>([]),loading=ref(false),search=ref(''),detail=ref<DataRow|null>(null),approvalMode=ref(false),reason=ref(''),busy=ref(false);
+let newestRequest=0;
+const filtered=computed(()=>rows.value.filter(r=>match(r,search.value,['id','requesterName','agentName','tableName','sourceName','columnsRequested','reason'])));
+const emptyText=computed(()=>({
+ all:'暂无申请记录',pending:'当前没有待你审批的申请',mine:'你尚未发起申请',handled:'暂无已处理记录'
+})[tab.value]);
 const canApprove=computed(()=>detail.value?.status==='PENDING'&&(detail.value.approverUsername===props.user.username||props.user.roleCode==='ADMIN')
  &&detail.value.ownerUsername!==props.user.username&&new Date(detail.value.expiresAt).getTime()>Date.now());
-async function refresh(){try{rows.value=await api('/api/requests?scope='+tab.value)}catch(e){fail(e)}}
-function selectTab(t:string){tab.value=t;detail.value=null;void refresh()}
+async function refresh(){
+ const requestId=++newestRequest;
+ loading.value=true;
+ try{
+  const data=await api<DataRow[]>('/api/requests?scope='+encodeURIComponent(tab.value));
+  if(requestId===newestRequest)rows.value=data;
+ }catch(e){if(requestId===newestRequest){rows.value=[];fail(e)}}
+ finally{if(requestId===newestRequest)loading.value=false}
+}
+watch(tab,()=>{detail.value=null;rows.value=[];void refresh()});
+watch(()=>props.initialScope,scope=>{if(validScope(scope)&&scope!==tab.value)tab.value=scope});
 async function decide(action:'approve'|'reject'){if(!detail.value)return;try{if(!reason.value.trim())throw Error('必须填写审批意见');busy.value=true;
  await api('/api/requests/'+detail.value.id+'/'+action,'POST',{reason:reason.value.trim()});
  detail.value=null;reason.value='';await refresh()}catch(e){fail(e)}finally{busy.value=false}}
@@ -18,7 +36,7 @@ onMounted(async()=>{await refresh();if(props.initialDetailId){try{detail.value=a
 <template>
 <section v-if="!detail" class="panel">
  <div class="toolbar stack">
- <a-radio-group :value="tab" button-style="solid" @change="selectTab($event.target.value)">
+ <a-radio-group v-model:value="tab" button-style="solid">
   <a-radio-button v-if="user.roleCode==='ADMIN'" value="all">全部申请</a-radio-button>
   <a-radio-button v-if="user.roleCode!=='READER'" value="pending">待我审批</a-radio-button>
   <a-radio-button value="mine">我发起的</a-radio-button>
@@ -27,7 +45,7 @@ onMounted(async()=>{await refresh();if(props.initialDetailId){try{detail.value=a
  <a-input-search v-model:value="search" class="search" allow-clear placeholder="搜索申请内容、Agent 或表名"/>
  <a-button class="toolbar-refresh" @click="refresh">刷新</a-button>
  </div>
- <a-table :data-source="filtered" :pagination="page" row-key="id" :scroll="{x:850}">
+ <a-table :data-source="filtered" :loading="loading" :locale="{emptyText}" :pagination="page" row-key="id" :scroll="{x:850}">
   <a-table-column title="申请时间"><template #default="{record}">{{stamp(record.createdAt)}}</template></a-table-column>
   <a-table-column title="申请人" data-index="requesterName"/>
   <a-table-column title="Agent" data-index="agentName"/>
