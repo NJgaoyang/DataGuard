@@ -164,6 +164,10 @@ class McpApprovalFlowIntegrationTest {
       .content("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}"))
       .andExpect(status().isForbidden());
   mvc.perform(post("/mcp").contentType("application/json").accept("application/json","text/event-stream").header("Authorization","Bearer "+token)
+     .header("MCP-Protocol-Version","2025-11-25").content(
+       "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-11-25\",\"capabilities\":{},\"clientInfo\":{\"name\":\"test\",\"version\":\"1.0.0\"}}}"))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.result.protocolVersion").value("2025-11-25"));
+  mvc.perform(post("/mcp").contentType("application/json").accept("application/json","text/event-stream").header("Authorization","Bearer "+token)
      .header("MCP-Protocol-Version","2025-03-26").content(
        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-03-26\"}}"))
    .andExpect(status().isOk()).andExpect(jsonPath("$.result.protocolVersion").value("2025-03-26"));

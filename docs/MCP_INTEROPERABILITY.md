@@ -2,7 +2,7 @@
 
 ## 服务端实现
 
-- 官方 MCP Java SDK 0.17.2，Spring WebMVC Stateless Streamable HTTP：`POST /mcp` JSON-RPC，`GET /mcp` = 405（不提供 SSE 事件流）。
+- 官方 MCP Java SDK 0.18.2，Spring WebMVC Stateless Streamable HTTP：`POST /mcp` JSON-RPC，`GET /mcp` = 405（不提供 SSE 事件流）。
 - SDK 自行处理 initialize、tools/list、tools/call、ping、通知、版本协商和工具 JSON Schema。无自制 JSON-RPC Controller。
 - 独立 MCP Bearer Token + Origin 前置过滤器，仅支持有效 DataGuard Agent Token（登录 UI 的 Cookie 不能用于 MCP）。
 - `DG_ALLOWED_MCP_ORIGINS` 配置受信任 Origin 列表。桌面/服务端无 Origin 请求允许；显式不可信 Origin 返回 403。
