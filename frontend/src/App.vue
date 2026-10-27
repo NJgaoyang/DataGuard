@@ -7,7 +7,6 @@ import {
 } from '@ant-design/icons-vue';
 import {api,fail,initCsrf,login,logout,type User,type DataRow} from './api';
 import zhCN from 'ant-design-vue/es/locale/zh_CN';
-import {dgTheme} from './design/theme';
 import {useRoute,useRouter} from 'vue-router';
 const Dashboard=defineAsyncComponent(()=>import('./views/Dashboard.vue'));
 const Sources=defineAsyncComponent(()=>import('./views/Sources.vue'));
@@ -17,7 +16,11 @@ const Approvals=defineAsyncComponent(()=>import('./views/Approvals.vue'));
 const Records=defineAsyncComponent(()=>import('./views/Records.vue'));
 const Settings=defineAsyncComponent(()=>import('./views/Settings.vue'));
 
-const theme=dgTheme;
+const theme={token:{colorPrimary:'#1766e8',colorSuccess:'#18a76e',colorError:'#e04757',
+  colorWarning:'#d59529',colorText:'#203147',colorTextSecondary:'#75839a',
+  colorBorder:'#e5eaf1',colorBgLayout:'#f7f9fc',borderRadius:6,fontSize:13,motion:false},
+  components:{Table:{headerBg:'#f9fbfd',headerColor:'#728097',cellPaddingBlock:9,cellPaddingInline:12},
+   Button:{borderRadius:5},Menu:{itemSelectedBg:'#eaf2ff'}}};
 const route=useRoute(),router=useRouter();
 const allowedPages=['dashboard','sources','agents','rules','approvals','records','settings'];
 function routePage(){const value=String(route.name||'dashboard');return value.endsWith('-detail')?value.slice(0,-7):allowedPages.includes(value)?value:'dashboard';}

@@ -3,16 +3,10 @@ import {message} from 'ant-design-vue';
 import {computed,onMounted,ref,watch} from 'vue';
 import dayjs from 'dayjs';
 import {api,stamp,match,page,fail,confirm,stateName,stateColor,type DataRow,type User} from '../api';
-import DgDataTable from '../components/DgDataTable.vue';
-import DgFilterBar from '../components/DgFilterBar.vue';
-import {useListSearch} from '../composables/useListSearch';
-import DgDetailPanel from '../components/DgDetailPanel.vue';
-import DgPermissionFields from '../components/DgPermissionFields.vue';
-const {draftSearch,appliedSearch,querySearch,resetSearch}=useListSearch();
 const props=defineProps<{user:User;initialDetailId?:string}>();
 const maxRowsPerQuery=ref(200);
 async function loadQueryLimit(){try{const limits=await api<{maxRowsPerQuery:number}>('/api/security/limits');maxRowsPerQuery.value=limits.maxRowsPerQuery}catch(e){fail(e)}}
-const rows=ref<DataRow[]>([]),sources=ref<DataRow[]>([]),users=ref<DataRow[]>([]),selected=ref<DataRow|null>(null),tab=ref('grants'),secret=ref(''),createOpen=ref(false),form=ref({name:'',ownerId:'',expiresAt:'2099-01-31T23:59:59'}),grants=ref<DataRow>({tables:[],columns:[]}),
+const rows=ref<DataRow[]>([]),sources=ref<DataRow[]>([]),users=ref<DataRow[]>([]),selected=ref<DataRow|null>(null),search=ref(''),tab=ref('grants'),secret=ref(''),createOpen=ref(false),form=ref({name:'',ownerId:'',expiresAt:'2099-01-31T23:59:59'}),grants=ref<DataRow>({tables:[],columns:[]}),
  sourceId=ref(''),tableName=ref(''),columnName=ref(''),expiry=ref(30),testResult=ref<DataRow|null>(null),testBusy=ref(false),rotationExpiry=ref('2099-01-31T23:59:59'),usage=ref<DataRow>({stats:{},recent:[]}),editingGrants=ref(false),grantBusy=ref(false),grantOptions=ref<DataRow[]>([]),grantFields=ref<Record<string,string[]>>({}),grantOriginal=ref<Record<string,string[]>>({}),viewMode=ref<'view'|'edit'>('view'),expandedSources=ref<string[]>([]),grantSource=ref(''),selectedGrantTable=ref(''),grantSearch=ref('');
 const mcpEndpoint=window.location.origin+'/mcp';
 const restEndpoint=window.location.origin+'/api/v1/agent';
@@ -20,7 +14,7 @@ const exampleTab=ref('mcp');
 const mcpExample=computed(()=>`codex mcp add dataguard --url ${mcpEndpoint} --bearer-token-env-var DATAGUARD_TOKEN`);
 const javaExample=computed(()=>`// Java 21 · 使用环境变量 DATAGUARD_TOKEN\nvar client = java.net.http.HttpClient.newHttpClient();\nvar req = java.net.http.HttpRequest.newBuilder(java.net.URI.create("${restEndpoint}/datasources"))\n  .header("Authorization", "Bearer " + System.getenv("DATAGUARD_TOKEN"))\n  .GET().build();\nvar res = client.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());\nSystem.out.println(res.statusCode() + " " + res.body());`);
 const pythonExample=computed(()=>`# pip install requests\nimport os, requests\nbase = "${restEndpoint}"\nheaders = {"Authorization": "Bearer " + os.environ["DATAGUARD_TOKEN"]}\nr = requests.get(base + "/datasources", headers=headers, timeout=15)\nr.raise_for_status()\nprint(r.json())`);
-const filtered=computed(()=>rows.value.filter(r=>match(r,appliedSearch.value,['name','ownerName'])));
+const filtered=computed(()=>rows.value.filter(r=>match(r,search.value,['name','ownerName'])));
 const sourceName=(id:string)=>sources.value.find(s=>s.id===id)?.name||'数据源';
 const groupedGrants=computed(()=>{const m=new Map<string,{sourceId:string;name:string;tables:DataRow[]}>();for(const t of (viewMode.value==='edit'?grantOptions.value:grants.value.tables||[])){const id=String(t.sourceId);if(!m.has(id))m.set(id,{sourceId:id,name:sourceName(id),tables:[]});m.get(id)!.tables.push(t)}return [...m.values()]});
 const activeGrantGroup=computed(()=>groupedGrants.value.find(g=>g.sourceId===grantSource.value));
@@ -68,8 +62,8 @@ onMounted(async()=>{await loadQueryLimit();await refresh();if(props.initialDetai
 </script>
 <template>
 <section v-if="!selected" class="panel">
- <DgFilterBar @query="querySearch" @reset="resetSearch"><a-button type="primary" @click="openCreate">＋ 新建 Agent</a-button><a-input v-model:value="draftSearch" class="search" allow-clear placeholder="搜索 Agent 名称或所属用户"/><template #actions><a-button class="toolbar-refresh" @click="refresh">刷新</a-button></template></DgFilterBar>
- <DgDataTable :data-source="filtered" :pagination="page" row-key="id" :scroll="{x:770}">
+ <div class="toolbar"><a-button type="primary" @click="openCreate">＋ 新建 Agent</a-button><a-input-search v-model:value="search" class="search" allow-clear placeholder="搜索 Agent 名称或所属用户"/><a-button class="toolbar-refresh" @click="refresh">刷新</a-button></div>
+ <a-table :data-source="filtered" :pagination="page" row-key="id" :scroll="{x:770}">
   <a-table-column title="序号" :width="72"><template #default="{record}">{{filtered.findIndex(item=>item.id===record.id)+1}}</template></a-table-column>
  <a-table-column title="Agent 名称"><template #default="{record}"><a-button type="link" class="name-link" @click="open(record,'view')">♧ {{record.name}}</a-button></template></a-table-column>
  <a-table-column title="所属用户" data-index="ownerName"/>
@@ -81,9 +75,9 @@ onMounted(async()=>{await loadQueryLimit();await refresh();if(props.initialDetai
   <a-menu-divider/>
   <a-menu-item danger :disabled="!!record.enabled" @click="confirm('删除 Agent「'+record.name+'」？将立即禁用令牌并移除授权，列表不再显示，历史审批和审计记录继续保留。',()=>deleteAgent(record))"><span class="row-menu-icon">♜</span>删除 Agent</a-menu-item>
  </a-menu></template></a-dropdown></a-space></template></a-table-column>
- </DgDataTable></section>
- <DgDetailPanel v-else aria-label="Agent 详情页面" back-label="返回 Agent 列表" @back="selected=null">
- 
+ </a-table></section>
+ <section v-else class="panel detail-page" aria-label="Agent 详情页面">
+ <teleport to="#workspace-actions"><a-button @click="selected=null">返回 Agent 列表</a-button></teleport>
  <div class="detail-content">
   <template v-if="selected"><div class="drawer-heading"><strong>{{selected.name}}</strong><a-tag :color="selected.enabled?'green':'default'">{{status(selected)}}</a-tag></div>
    <a-tabs v-model:active-key="tab">
@@ -117,13 +111,12 @@ onMounted(async()=>{await loadQueryLimit();await refresh();if(props.initialDetai
          <small v-if="(viewMode==='edit'?grantFields[grantKey(item.sourceId,item.tableName)]?.length:columnsFor(item).length)">已授权</small>
         </div><a-empty v-if="!visibleGrantTables.length" :image="undefined" description="暂无数据表"/></div>
        </div>
-       <div class="picker-columns">
-        <DgPermissionFields v-if="activeGrantRow"
-         :fields="viewMode==='edit'?(activeOption?.columns||[]).map((name:string)=>({name,checked:selectedColumns.includes(name)})):columnsFor(activeGrantRow).map((c:DataRow)=>({name:c.columnName,checked:true}))"
-         :read-only="viewMode!=='edit'"
-         :disabled="grantBusy||!activeTableEnabled" :show-select-all="viewMode==='edit'"
-         @toggle="setGrantField" @toggle-all="toggleGrantAll"/>
-        <a-empty v-else :image="undefined" description="请选择左侧数据表"/>
+       <div class="picker-columns"><div class="picker-pane-head"><span>字段 <span>{{viewMode==='edit'?selectedColumns.length:activeGrantRow?columnsFor(activeGrantRow).length:0}} / {{viewMode==='edit'?(activeOption?.columns||[]).length:activeGrantRow?columnsFor(activeGrantRow).length:0}}</span></span>
+        <a-button v-if="viewMode==='edit'" type="link" size="small" :disabled="!activeOption||!activeTableEnabled||grantBusy" @click="toggleGrantAll">{{selectedAll?'取消全选':'全选'}}</a-button></div>
+        <div v-if="activeGrantRow" class="source-field-list">
+         <template v-if="viewMode==='edit'"><div v-for="column in activeOption?.columns||[]" :key="column" class="source-field-row"><a-checkbox :checked="selectedColumns.includes(column)" :disabled="!activeTableEnabled||grantBusy" @change="setGrantField(column,$event.target.checked)">{{column}}</a-checkbox></div></template>
+         <template v-else><div v-for="c in columnsFor(activeGrantRow)" :key="c.columnName" class="source-field-row"><a-checkbox checked disabled>{{c.columnName}}</a-checkbox></div></template>
+        </div><a-empty v-else :image="undefined" description="请选择左侧数据表"/>
        </div>
       </div>
      </div>
@@ -138,13 +131,13 @@ onMounted(async()=>{await loadQueryLimit();await refresh();if(props.initialDetai
   <a-descriptions-item label="最近访问">{{stamp(usage.stats?.lastAccess)}}</a-descriptions-item>
  </a-descriptions>
  <div class="drawer-section-title" style="margin-top:20px">最近访问</div>
- <DgDataTable :data-source="usage.recent||[]" row-key="id" size="small" :pagination="false">
+ <a-table :data-source="usage.recent||[]" row-key="id" size="small" :pagination="false">
   <a-table-column title="序号" :width="72"><template #default="{index}">{{index+1}}</template></a-table-column>
   <a-table-column title="时间"><template #default="{record}">{{stamp(record.createdAt)}}</template></a-table-column>
   <a-table-column title="数据表" data-index="tableName"/>
   <a-table-column title="行数" data-index="requestedRows"/>
   <a-table-column title="结果"><template #default="{record}"><a-tag :color="stateColor(record.status)">{{stateName[record.status]||'未知状态'}}</a-tag></template></a-table-column>
- </DgDataTable>
+ </a-table>
  </a-tab-pane>
     <a-tab-pane key="examples" tab="接入样例">
      <div class="drawer-section-title">Agent 接入示例</div>
@@ -160,7 +153,7 @@ onMounted(async()=>{await loadQueryLimit();await refresh();if(props.initialDetai
    </a-tabs>
   </template>
  </div>
-</DgDetailPanel>
+</section>
  <a-modal v-model:open="createOpen" title="新建 Agent" ok-text="创建" @ok="save">
   <a-form layout="vertical"><a-form-item label="Agent 名称" required><a-input v-model:value="form.name"/></a-form-item>
    <a-form-item v-if="user.roleCode==='ADMIN'" label="所属用户"><a-select v-model:value="form.ownerId" placeholder="不选则归属本人" allow-clear :options="users.map(u=>({value:u.id,label:u.displayName}))"/></a-form-item>
