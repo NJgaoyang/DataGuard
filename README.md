@@ -1,4 +1,15 @@
 # DataGuard
+<img width="2160" height="1187" alt="image" src="https://github.com/user-attachments/assets/9935859c-74a5-46b6-affd-9456a2db091d" />
+<img width="2160" height="1187" alt="image" src="https://github.com/user-attachments/assets/8415caf9-dc60-4909-b4aa-4297eafccccf" />
+<img width="2160" height="1187" alt="image" src="https://github.com/user-attachments/assets/a78df6b4-6171-4efd-877b-85972e6fc116" />
+<img width="2160" height="1187" alt="image" src="https://github.com/user-attachments/assets/eba619bf-558c-47a7-9cf3-2886543c322c" />
+<img width="2160" height="1187" alt="image" src="https://github.com/user-attachments/assets/542cca79-1704-4e2f-ab43-b1526ae2aeab" />
+<img width="2160" height="1187" alt="image" src="https://github.com/user-attachments/assets/3b61dd2f-864e-45a2-8de5-d2ba2619bd9a" />
+<img width="2160" height="1187" alt="image" src="https://github.com/user-attachments/assets/cddf7a82-f8eb-47cf-ad26-b1db93742b56" />
+<img width="2160" height="1187" alt="image" src="https://github.com/user-attachments/assets/1b1c31c6-dc1e-4c15-9166-db914fb24d9e" />
+<img width="2160" height="1187" alt="image" src="https://github.com/user-attachments/assets/b4978f10-f19a-4122-a3a9-0f648e9bfc91" />
+<img width="2160" height="1187" alt="image" src="https://github.com/user-attachments/assets/6f03536a-d11a-41ab-94e2-5d0ad412b1ec" />
+
 
 **面向 AI Agent 的数据库只读安全访问网关**。通过标准 MCP Streamable HTTP 或 REST API，让 AI 助手与业务应用在**受控授权、规则审批、行数限制和审计**的前提下查询 MySQL / StarRocks，而不直接持有业务数据库账号。
 
