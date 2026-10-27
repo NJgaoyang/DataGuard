@@ -365,9 +365,11 @@ class McpGateway {
         String.valueOf(dataSource.get("username")),sources.decryptPassword(dataSource))){
    connection.setReadOnly(true);
    var meta=connection.getMetaData();
+   // StarRocks and some MySQL-compatible JDBC sources do not expose primary keys.
+   // Preserve authorized column descriptions even when optional PK metadata is absent.
    try(var keys=meta.getPrimaryKeys(String.valueOf(dataSource.get("databaseName")),null,table)){
     while(keys.next())primaryKeys.add(keys.getString("COLUMN_NAME"));
-   }
+   }catch(java.sql.SQLException unsupportedPrimaryKeys){ /* optional JDBC metadata */ }
    try(var fields=meta.getColumns(String.valueOf(dataSource.get("databaseName")),null,table,null)){
     while(fields.next()){
      String name=fields.getString("COLUMN_NAME");
