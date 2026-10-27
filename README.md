@@ -1,4 +1,7 @@
 # DataGuard
+
+**面向 AI Agent 的数据库只读安全访问网关**。通过标准 MCP Streamable HTTP 或 REST API，让 AI 助手与业务应用在**受控授权、规则审批、行数限制和审计**的前提下查询 MySQL / StarRocks，而不直接持有业务数据库账号。
+
 <img width="2160" height="1187" alt="image" src="https://github.com/user-attachments/assets/9935859c-74a5-46b6-affd-9456a2db091d" />
 <img width="2160" height="1187" alt="image" src="https://github.com/user-attachments/assets/8415caf9-dc60-4909-b4aa-4297eafccccf" />
 <img width="2160" height="1187" alt="image" src="https://github.com/user-attachments/assets/a78df6b4-6171-4efd-877b-85972e6fc116" />
@@ -10,8 +13,6 @@
 <img width="2160" height="1187" alt="image" src="https://github.com/user-attachments/assets/b4978f10-f19a-4122-a3a9-0f648e9bfc91" />
 <img width="2160" height="1187" alt="image" src="https://github.com/user-attachments/assets/6f03536a-d11a-41ab-94e2-5d0ad412b1ec" />
 
-
-**面向 AI Agent 的数据库只读安全访问网关**。通过标准 MCP Streamable HTTP 或 REST API，让 AI 助手与业务应用在**受控授权、规则审批、行数限制和审计**的前提下查询 MySQL / StarRocks，而不直接持有业务数据库账号。
 
 > **代码基线：`main`。** 文档描述当前主分支的实现（Flyway V1–V8），不是早期 P0 方案或旧的固定查询接口。开发演示环境：[DataGuard](https://110.42.132.44/)；示例公网 IP 不代表生产域名或生产安全验收。
 
