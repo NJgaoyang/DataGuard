@@ -12,6 +12,7 @@
 | [CONSOLE_GUIDE.md](CONSOLE_GUIDE.md) | 工作台、数据源、Agent、规则、审批、访问记录与筛选交互 | 管理员 / 审批人 |
 | [OPERATIONS.md](OPERATIONS.md) | 构建、systemd/Caddy、监控、备份、发布回滚与生产待办 | 运维 / SRE |
 | [TESTING.md](TESTING.md) | CI、真实已验收范围、没有实测的客户端、回归用例及限制 | QA / 运维 |
+| [UI_DESIGN_SYSTEM.md](UI_DESIGN_SYSTEM.md) | Vue 共享组件、设计 Token、ECharts、Monaco SQL 查看器 | 前端 / UI |
 
 ## 阅读路径
 
