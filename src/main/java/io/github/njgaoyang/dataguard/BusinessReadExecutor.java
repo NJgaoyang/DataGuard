@@ -42,4 +42,36 @@ class BusinessReadExecutor {
   }
   return rows;
  }
+ /** Return selected expression labels; never expose raw bytes or unbounded text. */
+ List<Map<String,Object>> executeDynamic(Map<String,Object> source,String sql,List<Object> params,
+                                         int limit,int timeoutSeconds) throws SQLException {
+  List<Map<String,Object>> rows=new ArrayList<>();
+  try(var connection=DriverManager.getConnection(sources.jdbcUrlFor(source),
+      String.valueOf(source.get("username")),sources.decryptPassword(source))){
+   connection.setReadOnly(true);
+   try(var statement=connection.prepareStatement(sql,ResultSet.TYPE_FORWARD_ONLY,ResultSet.CONCUR_READ_ONLY)){
+    statement.setQueryTimeout(timeoutSeconds);
+    statement.setMaxRows(limit);
+    for(int i=0;i<params.size();i++)statement.setObject(i+1,params.get(i));
+    try(var result=statement.executeQuery()){
+     var meta=result.getMetaData();
+     int count=meta.getColumnCount();
+     if(count<1||count>100)throw new SQLException("Invalid output column count");
+     Set<String> names=new java.util.HashSet<>();
+     for(int c=1;c<=count;c++)
+      if(!names.add(meta.getColumnLabel(c)))throw new SQLException("Duplicate SQL result column labels");
+     while(result.next()&&rows.size()<limit){
+      Map<String,Object> row=new LinkedHashMap<>();
+      for(int c=1;c<=count;c++){
+       Object value=result.getObject(c);
+       row.put(meta.getColumnLabel(c),value instanceof byte[]?"[REDACTED]":
+         value instanceof String txt&&txt.length()>256?txt.substring(0,256):value);
+      }
+      rows.add(row);
+     }
+    }
+   }
+  }
+  return rows;
+ }
 }
