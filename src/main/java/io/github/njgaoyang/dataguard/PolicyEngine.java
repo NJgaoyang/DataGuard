@@ -278,6 +278,22 @@ class ControlApi {
 
  // Server-side pagination: access records are not limited to the newest 300 rows.
  // Both the count and page query apply exactly the same authorization predicate.
+ // Filter options come from the entire accessible request history, NOT the current page.
+ @GetMapping("/requests/filters")
+ Map<String,Object> requestFilterOptions(Authentication auth){
+  boolean admin=auth.getAuthorities().stream().anyMatch(a->a.getAuthority().equals("ROLE_ADMIN"));
+  String restriction=admin?"":" WHERE (owner.username=? OR reviewer.username=?)";
+  Object[] args=admin?new Object[]{}:new Object[]{auth.getName(),auth.getName()};
+  String joins="""
+   FROM dg_requests q JOIN dg_agents a ON a.id=q.agent_id
+   JOIN dg_sources s ON s.id=q.source_id JOIN dg_users owner ON owner.id=q.owner_id
+   LEFT JOIN dg_users reviewer ON reviewer.id=q.approver_id
+   """;
+  List<String> agents=db.queryForList("SELECT DISTINCT a.name "+joins+restriction+" ORDER BY a.name",String.class,args);
+  List<String> sources=db.queryForList("SELECT DISTINCT s.name "+joins+restriction+" ORDER BY s.name",String.class,args);
+  return Map.of("agents",agents,"sources",sources);
+ }
+
  @GetMapping("/requests/page")
  Map<String,Object> requestPage(Authentication auth,
    @RequestParam(defaultValue="1") int page,

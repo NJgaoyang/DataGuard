@@ -501,3 +501,6 @@
  font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;
  border-radius:6px;background:var(--ant-color-fill-tertiary,#f5f7fa);
 }
+/* Keep explicit reset and query immediately behind records search field, without toolbar auto margin. */
+.app-root .toolbar.record-filters > .record-query-btn,
+.app-root .toolbar.record-filters > .record-reset-btn{order:0;margin-left:0;white-space:nowrap}
