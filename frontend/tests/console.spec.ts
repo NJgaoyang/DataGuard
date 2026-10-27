@@ -181,8 +181,8 @@ test('list pages have one title and breadcrumbs exist only on detail pages',asyn
  await navigate(page,'数据源');
  await page.getByRole('button',{name:'订单数据库'}).click();
  await expect(page.locator('.topbar-page')).toContainText('数据源');
- await expect(page.locator('.topbar-page')).toContainText('数据源详情');
- await expect(page.locator('.topbar-page strong')).toHaveText('数据源详情');
+ await expect(page.locator('.topbar-page')).toContainText('订单数据库');
+ await expect(page.locator('.topbar-page strong')).toHaveText('订单数据库');
  await page.locator('.topbar-page .breadcrumb-parent').click();
  await expect(page.locator('.topbar-page .breadcrumb-parent')).toHaveCount(0);
  await expect(page.locator('.detail-page')).toHaveCount(0);
@@ -191,26 +191,26 @@ test('list pages have one title and breadcrumbs exist only on detail pages',asyn
 
  await navigate(page,'Agent 管理');
  await page.getByRole('button',{name:/数据分析 Agent/}).click();
- await expect(page.locator('.topbar-page')).toContainText('Agent 详情');
+ await expect(page.locator('.topbar-page')).toContainText('数据分析 Agent');
  await page.locator('.topbar-page .breadcrumb-parent').click();
  await expect(page.locator('.detail-page')).toHaveCount(0);
  await expect(page.locator('.topbar-page .breadcrumb-parent')).toHaveCount(0);
 
  await navigate(page,'访问规则');
  await page.getByRole('button',{name:'订单表批量读取'}).click();
- await expect(page.locator('.topbar-page')).toContainText('规则详情');
+ await expect(page.locator('.topbar-page')).toContainText('订单表批量读取');
  await page.getByRole('button',{name:'返回规则列表'}).click();
  await expect(page.locator('.topbar-page .breadcrumb-parent')).toHaveCount(0);
 
  await navigate(page,'审批中心');
  await page.locator('.ant-table-tbody').getByRole('button',{name:'审批'}).first().click();
- await expect(page.locator('.topbar-page')).toContainText('审批详情');
+ await expect(page.locator('.topbar-page')).toContainText('申请 #q1');
  await page.getByRole('button',{name:'返回审批列表'}).click();
  await expect(page.locator('.topbar-page .breadcrumb-parent')).toHaveCount(0);
 
  await navigate(page,'访问记录');
  await page.locator('.ant-table-tbody').getByRole('button',{name:'查看'}).first().click();
- await expect(page.locator('.topbar-page')).toContainText('访问详情');
+ await expect(page.locator('.topbar-page')).toContainText('访问 #q1');
  await page.locator('.topbar-page .breadcrumb-parent').click();
  await expect(page.locator('.detail-page')).toHaveCount(0);
  await expect(page.locator('.topbar-page .breadcrumb-parent')).toHaveCount(0);
@@ -234,10 +234,10 @@ test('dashboard 查看 opens the exact record page and back restores list',async
   body:JSON.stringify({stats:{requests:3,pending:1,denied:1,success:1},recent:requests})}));
  await page.goto('/dashboard');
  await expect(page.locator('.ant-table-tbody')).toContainText('客服 Agent');
- await page.locator('.ant-table-tbody').getByRole('button',{name:'查看'}).first().click();
- await expect(page.locator('.topbar-page strong')).toHaveText('访问详情');
+ await page.locator('.ant-table-tbody .row-view-btn').first().click();
+ await expect(page.locator('.topbar-page strong')).toHaveText('访问 #q1');
  await expect(page.locator('.topbar-page')).toContainText('访问记录');
- await expect(page.locator('.topbar-page')).toContainText('访问详情');
+ await expect(page.locator('.topbar-page')).toContainText('访问 #q1');
  await expect(page.locator('.detail-page')).toContainText('q1');
  await expect(page.locator('.detail-page')).toContainText('客服 Agent');
  await expect(page.locator('.ant-drawer')).toHaveCount(0);
@@ -266,7 +266,7 @@ test('page header is single-level with centered actions and no duplicate list he
  await navigate(page,'数据源');
  await expect(page.locator('.workspace>.panel>.panel-head')).toHaveCount(0);
  const create=page.getByRole('button',{name:'新增数据源'});
- const refresh=page.getByRole('button',{name:'刷新'});
+ const refresh=page.locator('.toolbar-refresh');
  await expect(create).toBeVisible();
  const first=await create.boundingBox(),second=await refresh.boundingBox();
  expect(Math.abs((first!.y+first!.height/2)-(second!.y+second!.height/2))).toBeLessThanOrEqual(2);
