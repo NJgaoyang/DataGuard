@@ -165,9 +165,10 @@ class AuthApi {
   Guard.admin(auth);
   if(body==null||body.agentCallsPerMinute()==null||body.agentRowsPerMinute()==null||
     body.agentCallsPerMinute()<1||body.agentCallsPerMinute()>60||
-    body.agentRowsPerMinute()<1||body.agentRowsPerMinute()>3000||
-    body.maxRowsPerQuery()==null||body.maxRowsPerQuery()<1)
-   throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Security quota must not exceed defaults");
+    body.agentRowsPerMinute()<1||body.agentRowsPerMinute()>300000||
+    body.maxRowsPerQuery()==null||body.maxRowsPerQuery()<1||
+    body.maxRowsPerQuery()>100000||body.maxRowsPerQuery()>body.agentRowsPerMinute())
+   throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Max query rows must be <= minute row budget (up to 300000), and <= 100000");
   db.update("UPDATE dg_security_settings SET setting_value=? WHERE setting_key='agent_calls_per_minute'",body.agentCallsPerMinute());
   db.update("UPDATE dg_security_settings SET setting_value=? WHERE setting_key='agent_rows_per_minute'",body.agentRowsPerMinute());
   db.update("INSERT INTO dg_security_settings(setting_key,setting_value) VALUES('max_rows_per_query',?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)",body.maxRowsPerQuery());

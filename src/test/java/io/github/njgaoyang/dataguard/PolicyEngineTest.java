@@ -9,6 +9,8 @@ class PolicyEngineTest {
   String a=PolicyEngine.fingerprint("agent","source","orders",List.of("amount","id"),50,"id","123","amount","DESC");
   assertEquals(a,PolicyEngine.fingerprint("agent","source","orders",List.of("amount","id"),50,"id","123","amount","DESC"));
   assertEquals(64,a.length());
+  assertEquals(a,PolicyEngine.fingerprint("agent","source","orders",List.of("id","amount"),50,"id","123","amount","DESC"));
+  assertNotEquals(a,PolicyEngine.fingerprint("agent","source","orders",List.of("id","amount"),50,"id","123","amount","DESC","READ|10|||"));
  }
  @Test void alteredLimitFilterOrAgentMustNeverShareApproval(){
   String original=PolicyEngine.fingerprint("agent1","source","orders",List.of("amount"),50,"id","123",null,null);
