@@ -99,7 +99,7 @@ curl -X POST 'https://110.42.132.44/mcp' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
 ```
 
-提供七个工具：`list_datasources`（授权数据源）、`get_schema`（表）、`describe_table`（字段）、`execute_readonly`（只读查询）、`get_access_request`（审批状态）、`count_rows`（总行数）、`aggregate_readonly`（受控聚合）。`execute_readonly` 的主要参数为 `sourceId`、`tableName`、`columns`、`limit`，可选 `filterColumn`、`filterValue`、`sortColumn`、`sortDirection`。
+MCP 提供六个工具：list_datasources、get_schema、describe_table、validate_sql、execute_sql_readonly、get_access_request。所有查询使用统一 SQL AST 安全引擎。
 
 ## RESTful API 接入
 
@@ -108,17 +108,15 @@ curl -X POST 'https://110.42.132.44/mcp' \
 | GET | `/datasources` | 列出授权数据源 |
 | GET | `/datasources/{id}/tables` | 列出授权表 |
 | GET | `/datasources/{id}/tables/{table}/columns` | 列出授权字段 |
-| POST | `/queries` | 受控查询（支持 limit、offset，默认最多 200 行） |
+| POST | `/queries` | 授权 SQL SELECT（包含计算和 JOIN） |
+| POST | `/queries/validate` | SQL AST 权限校验 |
 | GET | `/requests/{id}` | 获取审批状态 |
-| POST | `/counts` | 授权表行数统计 |
-| POST | `/aggregations` | COUNT/SUM/AVG/MIN/MAX 及分组聚合 |
-| GET | `/datasources/{id}/tables/{table}/metadata` | 授权字段类型和主键信息 |
 
 ```bash
 curl -X POST 'https://110.42.132.44/api/v1/agent/queries' \
   -H "Authorization: Bearer $DATAGUARD_TOKEN" \
   -H 'Content-Type: application/json' \
-  -d '{"sourceId":"替换为数据源UUID","tableName":"orders","columns":["order_id","amount"],"limit":10}'
+  -d '{"sourceId":"替换为数据源UUID","sql":"SELECT order_id, amount FROM orders ORDER BY order_id LIMIT 10"}'
 ```
 
 REST 响应直接为 JSON 数据；命中审批时返回 `status=PENDING`、`requestId`，调用方可查询 `/requests/{id}`，审批通过后重试**完全相同**的查询。无匹配放行规则时默认拒绝。
@@ -202,7 +200,7 @@ DeepSeek 模型 API 的 Function Calling 由**你的应用**转为上述 REST �
 
 ## 权限与安全须知
 
-- 平台表/字段白名单与 Agent 授权必须同时满足；所有查询仅单表 SELECT，不接受原始 SQL。
+- 平台表/字段白名单与 Agent 授权必须同时满足；只接受经 AST 权限校验的只读 SQL SELECT。
 - 数据源账号必须是物理只读账号，数据库连接地址需在 `DG_ALLOWED_SOURCE_HOSTS` 中。
 - Token 仅展示一次，失效、停用、撤销后不能继续调用；重新激活撤销 Agent 将重新签发 Token。
 - REST 与 MCP 共用访问规则、限流、脱敏、审批与审计逻辑。审批是**单次授权**，不代表扩大 Agent 权限。
@@ -210,12 +208,9 @@ DeepSeek 模型 API 的 Function Calling 由**你的应用**转为上述 REST �
 
 更多资料：[REST 接口文档](docs/REST_AGENT_API.md) · [详细系统架构](docs/ARCHITECTURE.md) · [开发机真实业务联调](docs/P0_LIVE_ACCEPTANCE.md)。
 
-## MCP 与 REST 查询语义（新增）
+## MCP 与 REST 统一 SQL 查询
 
-- `execute_readonly` / `POST /queries`：选择已授权字段，支持 `limit`、`offset`、单列等值筛选和排序。
-- `count_rows` / `POST /counts`：返回总行数，不枚举表中的全部记录；仍需命中允许或审批规则。
-- `aggregate_readonly` / `POST /aggregations`：仅支持预定义的聚合函数以及最多一个已授权分组字段；禁止任意 SQL。
-- `describe_table` / `GET .../metadata`：返回授权字段名称、数据类型、可空性、主键信息和脱敏标志。
-- 提前申请审批支持筛选、排序和偏移量，必须与实际读取请求完全一致。字段顺序规范化，不会因调用方传入顺序不同而失配。
-- REST 返回 HTTP 202 表示等待审批；MCP 将 PENDING 视为正常工具结果（`isError=false`），工具执行失败才标记 `isError=true`。
-- 每分钟累计行数额度可由管理员提高至 300000，单次行数最多 100000 且不得超过每分钟行数额度。默认分钟行数 3000、单次 200。
+- MCP 使用 execute_sql_readonly，REST 使用 POST /queries；校验使用 validate_sql 和 POST /queries/validate。
+- 通过 SQL SELECT 支持受控 COUNT(*)、聚合、表达式和两表 JOIN，不再提供旧 READ/COUNT/AGGREGATE 三套 API。
+- 全部表、字段、函数需通过 AST 和授权校验，审批由实际 SQL 查询触发并仅允许单次消费。
+- 详见 [SQL 查询说明](docs/SQL_QUERY_V2.md) 与 [REST Agent API](docs/REST_AGENT_API.md)。

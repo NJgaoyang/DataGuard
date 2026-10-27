@@ -5,63 +5,60 @@ import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
-/** REST adapter around the existing MCP tool dispatch and its access policy. */
+/** Agent REST adapter: directly delegates to catalog and SQL services. */
 @RestController
 @RequestMapping("/api/v1/agent")
 class AgentRestController {
  private final AgentApi agents;
- private final McpGateway gateway;
+ private final AgentCatalogService catalog;
+ private final SqlQueryService sql;
+ private final PolicyEngine policy;
  private final SecurityControls controls;
- AgentRestController(AgentApi agents,McpGateway gateway,SecurityControls controls){this.agents=agents;this.gateway=gateway;this.controls=controls;}
+ AgentRestController(AgentApi agents,AgentCatalogService catalog,SqlQueryService sql,
+                     PolicyEngine policy,SecurityControls controls){
+  this.agents=agents;this.catalog=catalog;this.sql=sql;this.policy=policy;this.controls=controls;
+ }
  private Map<String,Object> identity(String bearer){
-  if(bearer==null||!bearer.regionMatches(true,0,"Bearer ",0,7))throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Agent token required");
+  if(bearer==null||!bearer.regionMatches(true,0,"Bearer ",0,7))
+   throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Agent token required");
   try{return agents.resolve(bearer.substring(7));}
   catch(RuntimeException ex){throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Invalid Agent token");}
  }
- private Object call(String bearer,String tool,Map<String,Object> params,int requestedRows){
+ private Map<String,Object> discovery(String bearer){
   var agent=identity(bearer);
-  controls.chargeAgent(String.valueOf(agent.get("id")),requestedRows);
-  try{return gateway.invokeRest(agent,tool,params);}
-  catch(PolicyEngine.Pending pending){return ResponseEntity.status(HttpStatus.ACCEPTED)
-    .body(Map.of("status","PENDING","requestId",pending.requestId,"message","Human approval required; retry identical query after approval"));}
+  controls.chargeAgent(String.valueOf(agent.get("id")),0);
+  return agent;
  }
- @GetMapping("/datasources") Object sources(@RequestHeader(value="Authorization",required=false) String bearer){return call(bearer,"list_datasources",Map.of(),0);}
- @GetMapping("/datasources/{id}/tables") Object tables(@RequestHeader(value="Authorization",required=false) String bearer,@PathVariable String id){return call(bearer,"get_schema",Map.of("sourceId",id),0);}
- @GetMapping("/datasources/{id}/tables/{table}/columns") Object columns(@RequestHeader(value="Authorization",required=false) String bearer,@PathVariable String id,@PathVariable String table){return call(bearer,"describe_table",Map.of("sourceId",id,"tableName",table),0);}
- @PostMapping("/queries") Object query(@RequestHeader(value="Authorization",required=false) String bearer,@RequestBody Map<String,Object> request){
-  if(request==null)throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Query required");
-  Object raw=request.getOrDefault("limit",10);
-  if(!(raw instanceof Integer limit)||limit<1||limit>controls.setting("max_rows_per_query",200))throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Limit exceeds configured per-query maximum");
-  return call(bearer,"execute_readonly",request,limit);
+ @GetMapping("/datasources")
+ Object sources(@RequestHeader(value="Authorization",required=false) String bearer){
+  return catalog.datasources(String.valueOf(discovery(bearer).get("id")));
  }
- @PostMapping("/counts") Object count(@RequestHeader(value="Authorization",required=false) String bearer,
-    @RequestBody Map<String,Object> input){
-   if(input==null)throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Count request required");
-   return call(bearer,"count_rows",input,1);
-  }
- @PostMapping("/aggregations") Object aggregate(@RequestHeader(value="Authorization",required=false) String bearer,
-    @RequestBody Map<String,Object> input){
-   if(input==null)throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Aggregation request required");
-   Object raw=input.getOrDefault("limit",10);
-   if(!(raw instanceof Integer limit)||limit<1||limit>controls.setting("max_rows_per_query",200))
-    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid aggregate limit");
-   return call(bearer,"aggregate_readonly",input,limit);
-  }
- @GetMapping("/datasources/{id}/tables/{table}/metadata") Object metadata(
-    @RequestHeader(value="Authorization",required=false) String bearer,@PathVariable String id,@PathVariable String table){
-   return call(bearer,"describe_table",Map.of("sourceId",id,"tableName",table),0);
-  }
- @PostMapping("/queries/validate") Object validateSql(@RequestHeader(value="Authorization",required=false) String bearer,
-    @RequestBody Map<String,Object> request){
+ @GetMapping("/datasources/{id}/tables")
+ Object tables(@RequestHeader(value="Authorization",required=false) String bearer,@PathVariable String id){
+  return catalog.tables(String.valueOf(discovery(bearer).get("id")),id);
+ }
+ @GetMapping("/datasources/{id}/tables/{table}/columns")
+ Object columns(@RequestHeader(value="Authorization",required=false) String bearer,@PathVariable String id,@PathVariable String table){
+  return catalog.describeTable(String.valueOf(discovery(bearer).get("id")),id,table);
+ }
+ @PostMapping("/queries/validate")
+ Object validate(@RequestHeader(value="Authorization",required=false) String bearer,@RequestBody Map<String,Object> request){
   if(request==null)throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"SQL validation request required");
-  return call(bearer,"validate_sql",request,0);
+  return sql.validate(discovery(bearer),request);
  }
- @PostMapping("/queries/sql") Object sqlQuery(@RequestHeader(value="Authorization",required=false) String bearer,
-    @RequestBody Map<String,Object> request){
+ @PostMapping("/queries")
+ Object query(@RequestHeader(value="Authorization",required=false) String bearer,@RequestBody Map<String,Object> request){
   if(request==null)throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"SQL query request required");
-  return call(bearer,"execute_sql_readonly",request,0);
+  try{return sql.execute(discovery(bearer),request);}
+  catch(PolicyEngine.Pending pending){
+   return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of("status","PENDING",
+    "requestId",pending.requestId,"message","Approval required; retry identical SQL and params after approval"));
+  }
  }
- @GetMapping("/requests/{id}") Object request(@RequestHeader(value="Authorization",required=false) String bearer,@PathVariable String id){return call(bearer,"get_access_request",Map.of("requestId",id),0);}
+ @GetMapping("/requests/{id}")
+ Object request(@RequestHeader(value="Authorization",required=false) String bearer,@PathVariable String id){
+  return policy.status(discovery(bearer),id);
+ }
 }
 
 @RestControllerAdvice(assignableTypes=AgentRestController.class)

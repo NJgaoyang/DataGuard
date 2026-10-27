@@ -5,19 +5,14 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class PolicyEngineTest {
- @Test void identicalRequestHasDeterministicFingerprint(){
-  String a=PolicyEngine.fingerprint("agent","source","orders",List.of("amount","id"),50,"id","123","amount","DESC");
-  assertEquals(a,PolicyEngine.fingerprint("agent","source","orders",List.of("amount","id"),50,"id","123","amount","DESC"));
+ @Test void queryFingerprintIsDeterministicAndIsolated(){
+  String a=PolicyEngine.fingerprint("agent","source","orders",List.of("amount","id"),50,"sql: SELECT 1");
   assertEquals(64,a.length());
-  assertEquals(a,PolicyEngine.fingerprint("agent","source","orders",List.of("id","amount"),50,"id","123","amount","DESC"));
-  assertNotEquals(a,PolicyEngine.fingerprint("agent","source","orders",List.of("id","amount"),50,"id","123","amount","DESC","READ|10|||"));
- }
- @Test void alteredLimitFilterOrAgentMustNeverShareApproval(){
-  String original=PolicyEngine.fingerprint("agent1","source","orders",List.of("amount"),50,"id","123",null,null);
-  assertNotEquals(original,PolicyEngine.fingerprint("agent2","source","orders",List.of("amount"),50,"id","123",null,null));
-  assertNotEquals(original,PolicyEngine.fingerprint("agent1","source","orders",List.of("amount"),51,"id","123",null,null));
-  assertNotEquals(original,PolicyEngine.fingerprint("agent1","source","orders",List.of("amount"),50,"id","456",null,null));
-  assertNotEquals(original,PolicyEngine.fingerprint("agent1","source","orders",List.of("secret"),50,"id","123",null,null));
+  assertEquals(a,PolicyEngine.fingerprint("agent","source","orders",List.of("id","amount"),50,"sql: SELECT 1"));
+  assertNotEquals(a,PolicyEngine.fingerprint("agent","source","orders",List.of("id","amount"),50,"sql: SELECT 2"));
+  assertNotEquals(a,PolicyEngine.fingerprint("other","source","orders",List.of("amount","id"),50,"sql: SELECT 1"));
+  assertNotEquals(a,PolicyEngine.fingerprint("agent","source","orders",List.of("amount","id"),51,"sql: SELECT 1"));
+  assertNotEquals(a,PolicyEngine.fingerprint("agent","source","orders",List.of("secret"),50,"sql: SELECT 1"));
  }
  @Test void identifiersAndPasswordsAreValidated(){
   assertEquals("orders_2026",Guard.identifier("orders_2026"));

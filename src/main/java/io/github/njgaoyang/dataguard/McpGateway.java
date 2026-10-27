@@ -1,11 +1,6 @@
 package io.github.njgaoyang.dataguard;
 
-import java.sql.DriverManager;
-import java.sql.ResultSet;
-import java.time.Duration;
 import java.util.*;
-import java.util.concurrent.Semaphore;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -18,26 +13,18 @@ import org.springframework.web.server.ResponseStatusException;
  */
 @RestController
 class McpGateway {
- private final JdbcTemplate db;
  private final AgentApi agents;
- private final SourceApi sources;
- private final BusinessReadExecutor executor;
+ private final AgentCatalogService catalog;
  private final PolicyEngine policy;
  private final Audit audit;
  private final SecurityControls securityControls;
  private final SqlQueryService sqlQueryService;
  private final com.fasterxml.jackson.databind.ObjectMapper json;
- private final Set<String> allowedHosts;
- private final Semaphore slots;
- private final int timeoutSeconds;
- McpGateway(JdbcTemplate db,AgentApi agents,SourceApi sources,PolicyEngine policy,Audit audit,SecurityControls securityControls,BusinessReadExecutor executor,SqlQueryService sqlQueryService,com.fasterxml.jackson.databind.ObjectMapper json,
-   @Value("${dataguard.allowed-source-hosts:}") String hosts,
-   @Value("${dataguard.max-concurrency:4}") int concurrency,
-   @Value("${dataguard.query-timeout-seconds:5}") int timeoutSeconds){
-  this.db=db;this.agents=agents;this.sources=sources;this.policy=policy;this.audit=audit;this.securityControls=securityControls;this.executor=executor;this.sqlQueryService=sqlQueryService;this.json=json;
-  this.allowedHosts=new HashSet<>(Arrays.stream(hosts.split(",")).map(String::trim).filter(s->!s.isBlank()).toList());
-  this.slots=new Semaphore(Math.max(1,Math.min(32,concurrency)));
-  this.timeoutSeconds=Math.max(1,Math.min(30,timeoutSeconds));
+ McpGateway(AgentApi agents,AgentCatalogService catalog,PolicyEngine policy,Audit audit,
+    SecurityControls securityControls,SqlQueryService sqlQueryService,
+    com.fasterxml.jackson.databind.ObjectMapper json){
+  this.agents=agents;this.catalog=catalog;this.policy=policy;
+  this.audit=audit;this.securityControls=securityControls;this.sqlQueryService=sqlQueryService;this.json=json;
  }
  private Map<String,Object> reply(Object id,String key,Object value){
   Map<String,Object> result=new LinkedHashMap<>();result.put("jsonrpc","2.0");result.put("id",id);result.put(key,value);return result;
@@ -83,16 +70,7 @@ class McpGateway {
   }
   try{
    Map<String,Object> params=request.get("params") instanceof Map<?,?> p?(Map<String,Object>)p:Map.of();
-   int requestedRows=0;
-   if("tools/call".equals(method)&&params.get("name") instanceof String toolName&&Set.of("execute_readonly","count_rows","aggregate_readonly").contains(toolName)){
-    if(Set.of("execute_sql_readonly","validate_sql").contains(toolName))requestedRows=0;
-    else if("count_rows".equals(toolName))requestedRows=1;
-    else if(params.get("arguments") instanceof Map<?,?> arguments){
-     Object size=arguments.get("limit");
-     requestedRows=size instanceof Integer n?Math.max(0,n):10;
-    }else requestedRows=10;
-   }
-   securityControls.chargeAgent(String.valueOf(agent.get("id")),requestedRows);
+   securityControls.chargeAgent(String.valueOf(agent.get("id")),0);
    Object result=switch(method){
     case "initialize" -> {
      String version=params.get("protocolVersion") instanceof String v&&SUPPORTED_PROTOCOLS.contains(v)?v:"2025-11-25";
@@ -138,25 +116,6 @@ class McpGateway {
   Map<String,Object> table=Map.of("type","object","properties",
     Map.of("sourceId",Map.of("type","string"),"tableName",Map.of("type","string")),
     "required",List.of("sourceId","tableName"));
-  Map<String,Object> read=Map.of("type","object","properties",
-    Map.of("sourceId",Map.of("type","string"),"tableName",Map.of("type","string"),
-      "columns",Map.of("type","array","items",Map.of("type","string")),
-      "limit",Map.of("type","integer","minimum",1),
-      "offset",Map.of("type","integer","minimum",0),
-      "filterColumn",Map.of("type","string"),"filterValue",Map.of("type","string"),
-      "sortColumn",Map.of("type","string"),"sortDirection",Map.of("type","string","enum",List.of("ASC","DESC"))),
-    "required",List.of("sourceId","tableName","columns"));
-  Map<String,Object> count=Map.of("type","object","properties",
-     Map.of("sourceId",Map.of("type","string"),"tableName",Map.of("type","string"),
-       "filterColumn",Map.of("type","string"),"filterValue",Map.of("type","string")),
-     "required",List.of("sourceId","tableName"));
-  Map<String,Object> aggregate=Map.of("type","object","properties",
-     Map.of("sourceId",Map.of("type","string"),"tableName",Map.of("type","string"),
-      "aggregateFunction",Map.of("type","string","enum",List.of("COUNT","SUM","AVG","MIN","MAX")),
-      "aggregateColumn",Map.of("type","string"),"groupColumn",Map.of("type","string"),
-      "filterColumn",Map.of("type","string"),"filterValue",Map.of("type","string"),
-      "limit",Map.of("type","integer","minimum",1),"offset",Map.of("type","integer","minimum",0)),
-      "required",List.of("sourceId","tableName","aggregateFunction"));
   Map<String,Object> sqlRead=Map.of("type","object","properties",Map.of(
     "sourceId",Map.of("type","string"),"sql",Map.of("type","string"),
     "params",Map.of("type","array","items",Map.of("type",List.of("string","number","boolean","null")))),
@@ -167,9 +126,6 @@ class McpGateway {
     Map.of("name","list_datasources","description","List sources explicitly assigned to this Agent","inputSchema",empty),
     Map.of("name","get_schema","description","List allowed tables for a source","inputSchema",source),
     Map.of("name","describe_table","description","List only approved columns","inputSchema",table),
-    Map.of("name","execute_readonly","description","Read authorized rows using a paginated single-table SELECT (limit, offset); may require human approval","inputSchema",read),
-    Map.of("name","count_rows","description","Count all matching rows without retrieving their values; requires approval policy and table grant","inputSchema",count),
-    Map.of("name","aggregate_readonly","description","Authorized COUNT/SUM/AVG/MIN/MAX, optionally grouped by one allowed column","inputSchema",aggregate),
     Map.of("name","validate_sql","description","Parse SQL and check table, column and function grants without execution","inputSchema",sqlRead),
     Map.of("name","execute_sql_readonly","description","Run a bounded, audited SELECT on one source; supports calculations and authorized two-table JOIN; may require approval","inputSchema",sqlRead),
     Map.of("name","get_access_request","description","Check approval status for one pending exact query","inputSchema",status));
@@ -186,240 +142,19 @@ class McpGateway {
   Map<String,Object> args=(Map<String,Object>)arguments;
   String agentId=(String)agent.get("id");
   Object result=switch(name){
-   case "list_datasources" -> db.queryForList("""
-    SELECT DISTINCT s.id,s.name,s.type FROM dg_sources s
-    JOIN dg_agent_tables t ON t.source_id=s.id
-    JOIN dg_source_tables allow_t ON allow_t.source_id=t.source_id AND allow_t.table_name=t.table_name
-    WHERE t.agent_id=? AND s.enabled=1 AND allow_t.enabled=1 ORDER BY s.name
-    """,agentId);
-   case "get_schema" -> db.queryForList("""
-    SELECT t.table_name AS tableName FROM dg_agent_tables t
-    JOIN dg_source_tables w ON w.source_id=t.source_id AND w.table_name=t.table_name
-    JOIN dg_sources s ON s.id=t.source_id
-    WHERE t.agent_id=? AND t.source_id=? AND w.enabled=1 AND s.enabled=1
-    ORDER BY t.table_name
-    """,agentId,Guard.id(str(args,"sourceId")));
-   case "describe_table" -> describeTable(agentId,str(args,"sourceId"),str(args,"tableName"));
+   case "list_datasources" -> catalog.datasources(agentId);
+   case "get_schema" -> catalog.tables(agentId,str(args,"sourceId"));
+   case "describe_table" -> catalog.describeTable(agentId,str(args,"sourceId"),str(args,"tableName"));
    case "get_access_request" -> policy.status(agent,str(args,"requestId"));
-   case "execute_readonly" -> query(agent,args,"READ");
-   case "count_rows" -> query(agent,args,"COUNT");
-   case "aggregate_readonly" -> query(agent,args,"AGGREGATE");
    case "validate_sql" -> sqlQueryService.validate(agent,args);
    case "execute_sql_readonly" -> sqlQueryService.execute(agent,args);
    default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Unknown tool");
   };
   return result;
  }
- Object invokeRest(Map<String,Object> agent,String name,Map<String,Object> args){
-  return invokeRaw(agent,Map.of("name",name,"arguments",args));
- }
  private static String str(Map<String,Object> params,String key){
   Object v=params.get(key);
   if(!(v instanceof String s))throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid "+key);
   return s;
- }
- private static String optional(Map<String,Object> args,String key){
-  Object value=args.get(key);
-  if(value==null)return null;
-  if(!(value instanceof String s))throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid "+key);
-  return s;
- }
- private Map<String,Object> query(Map<String,Object> agent,Map<String,Object> input,String operation){
-  String agentId=(String)agent.get("id"),sourceId=Guard.id(str(input,"sourceId"));
-  String table=Guard.identifier(str(input,"tableName"));
-  Object requestedLimit=operation.equals("COUNT")?1:input.getOrDefault("limit",10);
-  if(!(requestedLimit instanceof Integer limit)||limit<1||limit>securityControls.setting("max_rows_per_query",200))
-   throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Read limit exceeds configured maximum");
-  Object rawOffset=input.getOrDefault("offset",0);
-  if(!(rawOffset instanceof Integer offset)||offset<0||offset>1000000)
-   throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Offset must be between 0 and 1000000");
-  if(operation.equals("COUNT")&&offset!=0)throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"COUNT does not support offset");
-  Object rawColumns=input.get("columns");
-  if(operation.equals("READ")&&(!(rawColumns instanceof List<?> l)||l.isEmpty()))
-   throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Explicit columns required");
-  if(rawColumns!=null&&(!(rawColumns instanceof List<?> l)||l.size()>100))
-   throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid columns");
-  Set<String> unique=new TreeSet<>();
-  if(rawColumns instanceof List<?> raw)for(Object col:raw){
-   if(!(col instanceof String c))throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid column");
-   unique.add(Guard.identifier(c));
-  }
-  if(!operation.equals("READ")&&!unique.isEmpty())throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Columns only valid for execute_readonly");
-  List<String> columns=List.copyOf(unique);
-  String function=operation.equals("AGGREGATE")?str(input,"aggregateFunction"):null;
-  if(function!=null&&!Set.of("COUNT","SUM","AVG","MIN","MAX").contains(function))
-   throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid aggregate function");
-  String aggregateColumn=optional(input,"aggregateColumn");
-  String groupColumn=optional(input,"groupColumn");
-  if(aggregateColumn!=null)aggregateColumn=Guard.identifier(aggregateColumn);
-  if(groupColumn!=null)groupColumn=Guard.identifier(groupColumn);
-  if(operation.equals("AGGREGATE")&&!"COUNT".equals(function)&&aggregateColumn==null)
-   throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Aggregate column required");
-  if(!operation.equals("AGGREGATE")&&(aggregateColumn!=null||groupColumn!=null))
-   throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Aggregate options require aggregate_readonly");
-  String filterColumn=optional(input,"filterColumn"),filterValue=optional(input,"filterValue");
-  String sortColumn=optional(input,"sortColumn"),sortDirection=optional(input,"sortDirection");
-  if(filterColumn!=null){filterColumn=Guard.identifier(filterColumn);if(filterValue==null||filterValue.length()>256)throw new ResponseStatusException(HttpStatus.BAD_REQUEST);}
-  else if(filterValue!=null)throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
-  if(sortColumn!=null){sortColumn=Guard.identifier(sortColumn);if(sortDirection==null)sortDirection="ASC";
-   if(!Set.of("ASC","DESC").contains(sortDirection))throw new ResponseStatusException(HttpStatus.BAD_REQUEST);}
-  else if(sortDirection!=null)throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
-  if(!operation.equals("READ")&&sortColumn!=null)
-   throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Use groupColumn for aggregate results");
-  Set<String> requested=new HashSet<>(columns);
-  if(aggregateColumn!=null)requested.add(aggregateColumn);
-  if(groupColumn!=null)requested.add(groupColumn);
-  if(filterColumn!=null)requested.add(filterColumn);
-  if(sortColumn!=null)requested.add(sortColumn);
-  if(requested.isEmpty())requested.add(firstAuthorizedColumn(agentId,sourceId,table));
-  // All visible, filter and sort fields require BOTH platform and Agent grants.
-  authorizeColumns(agentId,sourceId,table,requested);
-  Set<String> masked=maskedColumns(sourceId,table);
-  if(filterColumn!=null&&masked.contains(filterColumn)||sortColumn!=null&&masked.contains(sortColumn)||
-     aggregateColumn!=null&&masked.contains(aggregateColumn)||groupColumn!=null&&masked.contains(groupColumn))
-   throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Masked field cannot be used for filtering or sorting");
-  Map<String,Object> source=sources.sourceForRead(sourceId);
-  String host=String.valueOf(source.get("host"));
-  if(!allowedHosts.contains(host))throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Source host not allowlisted");
-  long started=System.nanoTime();
-  String shape=operation.equals("READ")&&offset==0?null:
-    operation+"|"+offset+"|"+Objects.toString(function,"")+"|"+Objects.toString(aggregateColumn,"")+"|"+Objects.toString(groupColumn,"");
-  PolicyEngine.Verdict verdict=policy.begin(agent,sourceId,table,requested.stream().sorted().toList(),limit,filterColumn,filterValue,sortColumn,sortDirection,shape);
-  if("DENY".equals(verdict.action()))throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Policy denied");
-  if("APPROVAL".equals(verdict.action()))throw new PolicyEngine.Pending(verdict.id());
-  boolean succeeded=false,acquired=false;
-  try{
-   if(!slots.tryAcquire())throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,"Concurrent reads limited");
-   acquired=true;
-   String projection;
-   List<String> outputColumns;
-   if(operation.equals("READ")){
-    projection=String.join(",",columns.stream().map(c->"`"+c+"`").toList());
-    outputColumns=columns;
-   }else if(operation.equals("COUNT")){
-    projection="COUNT(*) AS total";
-    outputColumns=List.of("total");
-   }else{
-    projection=(groupColumn==null?"":"`"+groupColumn+"`,")+function+
-     "("+(aggregateColumn==null?"*":"`"+aggregateColumn+"`")+") AS metric";
-    outputColumns=groupColumn==null?List.of("metric"):List.of(groupColumn,"metric");
-   }
-   String sql="SELECT "+projection+" FROM `"+table+"`"+
-     (filterColumn==null?"":" WHERE `"+filterColumn+"` = ?")+
-     (groupColumn==null?"":" GROUP BY `"+groupColumn+"`")+
-     (operation.equals("READ")?(sortColumn==null?"":" ORDER BY `"+sortColumn+"` "+sortDirection):
-       groupColumn==null?"":" ORDER BY `"+groupColumn+"` ASC")+
-     (operation.equals("COUNT")?"":" LIMIT "+limit+" OFFSET "+offset);
-   List<Map<String,Object>> rows=executor.execute(source,sql,filterValue,outputColumns,masked,limit,timeoutSeconds);
-   // Re-evaluate revocations after I/O and before releasing any values.
-   authorizeColumns(agentId,sourceId,table,requested);
-   policy.verifyStillAllowed(verdict,agent,sourceId,table,requested.stream().sorted().toList(),limit);
-   // A newly masked field must not leak even if the policy changes during a slow read.
-   Set<String> currentMasked=maskedColumns(sourceId,table);
-   if(filterColumn!=null&&currentMasked.contains(filterColumn)||sortColumn!=null&&currentMasked.contains(sortColumn)||
-      aggregateColumn!=null&&currentMasked.contains(aggregateColumn)||groupColumn!=null&&currentMasked.contains(groupColumn))
-    throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Field masking changed during read");
-   for(Map<String,Object> row:rows)for(String column:columns)
-    if(currentMasked.contains(column))row.put(column,"[REDACTED]");
-   if(!allowedHosts.contains(host))throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Source host revoked");
-   long ms=(System.nanoTime()-started)/1_000_000;
-   policy.complete(verdict,rows.size(),ms,(String)agent.get("name"),sourceId+"/"+table);
-   succeeded=true;
-   Map<String,Object> response=new LinkedHashMap<>(Map.of("requestId",verdict.id(),"status","SUCCESS",
-     "rowCount",rows.size(),"rows",rows,"operation",operation));
-   if(operation.equals("COUNT"))response.put("total",rows.isEmpty()?0:rows.get(0).get("total"));
-   if(!operation.equals("COUNT"))response.put("offset",offset);
-   return response;
-  }catch(java.sql.SQLException ex){
-   audit.log((String)agent.get("name"),"AGENT_READ",verdict.id(),sourceId+"/"+table,"ERROR","JDBC read failed");
-   throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,"Read failed");
-  }finally{
-   if(acquired)slots.release();
-   if(!succeeded)policy.fail(verdict);
-  }
- }
-
- private String firstAuthorizedColumn(String agentId,String source,String table){
-  List<String> eligible=db.query("""
-   SELECT ac.column_name FROM dg_agent_columns ac
-   JOIN dg_agent_tables at ON at.agent_id=ac.agent_id AND at.source_id=ac.source_id AND at.table_name=ac.table_name
-   JOIN dg_source_columns sc ON sc.source_id=ac.source_id AND sc.table_name=ac.table_name AND sc.column_name=ac.column_name
-   JOIN dg_source_tables st ON st.source_id=ac.source_id AND st.table_name=ac.table_name
-   JOIN dg_sources ds ON ds.id=ac.source_id
-   JOIN dg_agents a ON a.id=ac.agent_id JOIN dg_users u ON u.id=a.owner_user_id
-   WHERE ac.agent_id=? AND ac.source_id=? AND ac.table_name=?
-    AND sc.enabled=1 AND st.enabled=1 AND ds.enabled=1
-    AND a.enabled=1 AND a.revoked_at IS NULL AND a.expires_at>NOW(3)
-    AND u.enabled=1 AND u.must_change_password=0
-   ORDER BY ac.column_name LIMIT 1
-   """,(rs,i)->rs.getString(1),agentId,source,table);
-  if(eligible.isEmpty())throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Table is not authorized");
-  return eligible.get(0);
- }
- private List<Map<String,Object>> describeTable(String agentId,String sourceId,String tableName){
-  String source=Guard.id(sourceId),table=Guard.identifier(tableName);
-  List<Map<String,Object>> grants=db.queryForList("""
- SELECT ac.column_name AS columnName,sc.masked FROM dg_agent_columns ac
-    JOIN dg_agent_tables at ON at.agent_id=ac.agent_id AND at.source_id=ac.source_id AND at.table_name=ac.table_name
-    JOIN dg_source_columns sc ON sc.source_id=ac.source_id AND sc.table_name=ac.table_name AND sc.column_name=ac.column_name
-    JOIN dg_source_tables st ON st.source_id=ac.source_id AND st.table_name=ac.table_name
-    JOIN dg_sources s ON s.id=ac.source_id
-    WHERE ac.agent_id=? AND ac.source_id=? AND ac.table_name=? AND sc.enabled=1 AND st.enabled=1 AND s.enabled=1
-    ORDER BY ac.column_name
-   """,agentId,source,table);
-  if(grants.isEmpty())return grants;
-  Map<String,Object> dataSource=sources.sourceForRead(source);
-  Set<String> primaryKeys=new HashSet<>();
-  Map<String,Map<String,Object>> physical=new HashMap<>();
-  try(var connection=DriverManager.getConnection(sources.jdbcUrlFor(dataSource),
-        String.valueOf(dataSource.get("username")),sources.decryptPassword(dataSource))){
-   connection.setReadOnly(true);
-   var meta=connection.getMetaData();
-   // StarRocks and some MySQL-compatible JDBC sources do not expose primary keys.
-   // Preserve authorized column descriptions even when optional PK metadata is absent.
-   try(var keys=meta.getPrimaryKeys(String.valueOf(dataSource.get("databaseName")),null,table)){
-    while(keys.next())primaryKeys.add(keys.getString("COLUMN_NAME"));
-   }catch(java.sql.SQLException unsupportedPrimaryKeys){ /* optional JDBC metadata */ }
-   try(var fields=meta.getColumns(String.valueOf(dataSource.get("databaseName")),null,table,null)){
-    while(fields.next()){
-     String name=fields.getString("COLUMN_NAME");
-     if(name!=null)physical.put(name,Map.of("dataType",Objects.toString(fields.getString("TYPE_NAME"),"unknown"),
-       "nullable",fields.getInt("NULLABLE")!=java.sql.DatabaseMetaData.columnNoNulls));
-    }
-   }
-  }catch(java.sql.SQLException ex){throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,"Unable to inspect authorized table");}
-  List<Map<String,Object>> result=new ArrayList<>();
-  for(var grant:grants){
-   String name=String.valueOf(grant.get("columnName"));
-   var item=new LinkedHashMap<String,Object>(grant);
-   item.putAll(physical.getOrDefault(name,Map.of("dataType","unknown","nullable",true)));
-   item.put("primaryKey",primaryKeys.contains(name));
-   result.add(item);
-  }
-  return result;
- }
-
- private Set<String> maskedColumns(String source,String table){
-  return new HashSet<>(db.query("""
-   SELECT column_name FROM dg_source_columns
-   WHERE source_id=? AND table_name=? AND enabled=1 AND masked=1
-   """,(rs,i)->rs.getString(1),source,table));
- }
- private void authorizeColumns(String agentId,String source,String table,Set<String> requested){
-  List<String> granted=db.query("""
-   SELECT ac.column_name FROM dg_agent_columns ac
-   JOIN dg_agent_tables t ON t.agent_id=ac.agent_id AND t.source_id=ac.source_id AND t.table_name=ac.table_name
-   JOIN dg_source_columns c ON c.source_id=ac.source_id AND c.table_name=ac.table_name AND c.column_name=ac.column_name
-   JOIN dg_source_tables w ON w.source_id=ac.source_id AND w.table_name=ac.table_name
-   JOIN dg_sources s ON s.id=ac.source_id
-   JOIN dg_agents a ON a.id=ac.agent_id
-   JOIN dg_users u ON u.id=a.owner_user_id
-   WHERE ac.agent_id=? AND ac.source_id=? AND ac.table_name=?
-     AND c.enabled=1 AND w.enabled=1 AND s.enabled=1
-     AND a.enabled=1 AND a.revoked_at IS NULL AND a.expires_at>NOW(3)
-     AND u.enabled=1 AND u.must_change_password=0
-   """,(rs,i)->rs.getString(1),agentId,source,table);
-  if(requested.isEmpty()||!new HashSet<>(granted).containsAll(requested))
-   throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Table or column not authorized");
  }
 }
