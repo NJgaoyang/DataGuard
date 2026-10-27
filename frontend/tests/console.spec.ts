@@ -38,6 +38,8 @@ test.beforeEach(async ({page})=>{
     recent:requests.map(x=>({id:x.id,agentName:x.agentName,tableName:x.tableName,status:x.status,requestedRows:x.requestedRows,createdAt:x.createdAt}))};
   else if(path==='/api/sources')data=sources;
   else if(path==='/api/sources/s1/tables')data=[{tableName:'orders',enabled:true,authorizedColumns:4}];
+  else if(path==='/api/sources/s1/physical-tables')data=[{tableName:'orders',enabled:true}];
+  else if(path==='/api/security/limits')data={maxRowsPerQuery:200};
   else if(path==='/api/sources/s1/tables/orders/physical-columns')data=[
    {columnName:'order_id',dataType:'bigint',enabled:true,masked:false},
    {columnName:'user_id',dataType:'bigint',enabled:true,masked:false},
