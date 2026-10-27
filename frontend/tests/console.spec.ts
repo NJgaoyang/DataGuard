@@ -69,6 +69,10 @@ test.beforeEach(async ({page})=>{
     const p=Math.max(1,Number(url.searchParams.get('page')||1));
     data={page:p,pageSize:10,total:candidates.length,items:candidates.slice((p-1)*10,p*10)};
   }
+  else if(path==='/api/requests/filters')data={
+    agents:['数据分析 Agent','客服 Agent','报表 Agent'],
+    sources:['订单数据库','用户数据库','分析数据库']
+  };
   else if(path.startsWith('/api/requests/')&&route.request().method()==='GET'){
     const id=path.split('/').pop();
     data=requests.find(x=>x.id===id)||requests[1];
@@ -375,4 +379,59 @@ test('approval scope buttons query distinct datasets and never show stale rows',
  await expect(table).toContainText('客服 Agent');
  await page.waitForTimeout(650);
  await expect(table).not.toContainText('数据分析 Agent');
+});
+
+test('records default to today; source and Agent options stay complete; query and reset are explicit',async({page})=>{
+ const requests:string[]=[];
+ page.on('request',req=>{
+  const url=new URL(req.url());
+  if(url.pathname==='/api/requests/page')requests.push(req.url());
+ });
+ await navigate(page,'访问记录');
+ await expect.poll(()=>requests.length).toBe(1);
+ const today=await page.evaluate(()=>{
+  const date=new Date();
+  return [date.getFullYear(),String(date.getMonth()+1).padStart(2,'0'),String(date.getDate()).padStart(2,'0')].join('-');
+ });
+ let initial=new URL(requests[0]);
+ expect(initial.searchParams.get('from')).toBe(today);
+ expect(initial.searchParams.get('to')).toBe(today);
+ const filters=page.locator('.record-filters');
+ const source=filters.locator('.ant-select').nth(2);
+ await source.click();
+ await page.locator('.ant-select-dropdown:visible .ant-select-item-option').filter({hasText:'订单数据库'}).click();
+ expect(requests).toHaveLength(1);
+ await source.click();
+ await expect(page.locator('.ant-select-dropdown:visible .ant-select-item-option').filter({hasText:'用户数据库'})).toBeVisible();
+ await expect(page.locator('.ant-select-dropdown:visible .ant-select-item-option').filter({hasText:'分析数据库'})).toBeVisible();
+ await page.locator('.ant-select-dropdown:visible .ant-select-item-option').filter({hasText:'用户数据库'}).click();
+ expect(requests).toHaveLength(1);
+ const agent=filters.locator('.ant-select').nth(1);
+ await agent.click();
+ await page.locator('.ant-select-dropdown:visible .ant-select-item-option').filter({hasText:'客服 Agent'}).click();
+ await agent.click();
+ await expect(page.locator('.ant-select-dropdown:visible .ant-select-item-option').filter({hasText:'报表 Agent'})).toBeVisible();
+ await page.locator('.ant-select-dropdown:visible .ant-select-item-option').filter({hasText:'报表 Agent'}).click();
+ expect(requests).toHaveLength(1);
+ await filters.locator('input[placeholder*="搜索数据表"]').fill('orders');
+ expect(requests).toHaveLength(1);
+ await filters.getByRole('button',{name:/查\s*询/}).click();
+ await expect.poll(()=>requests.length).toBe(2);
+ let queried=new URL(requests.at(-1)!);
+ expect(queried.searchParams.get('source')).toBe('用户数据库');
+ expect(queried.searchParams.get('agent')).toBe('报表 Agent');
+ expect(queried.searchParams.get('search')).toBe('orders');
+ await filters.getByRole('button',{name:/重\s*置/}).click();
+ expect(requests).toHaveLength(2);
+ await expect(source).toContainText('全部数据源');
+ await expect(agent).toContainText('全部 Agent');
+ await expect(filters.locator('input[placeholder*="搜索数据表"]')).toHaveValue('');
+ await filters.getByRole('button',{name:/查\s*询/}).click();
+ await expect.poll(()=>requests.length).toBe(3);
+ queried=new URL(requests.at(-1)!);
+ expect(queried.searchParams.has('source')).toBe(false);
+ expect(queried.searchParams.has('agent')).toBe(false);
+ expect(queried.searchParams.has('search')).toBe(false);
+ expect(queried.searchParams.get('from')).toBe(today);
+ expect(queried.searchParams.get('to')).toBe(today);
 });

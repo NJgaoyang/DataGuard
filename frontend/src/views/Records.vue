@@ -1,31 +1,57 @@
 <script setup lang="ts">
 import {computed,onMounted,ref,watch} from 'vue';
+import dayjs from 'dayjs';
 import {api,stamp,fail,stateName,stateColor,type DataRow} from '../api';
 
 const props=defineProps<{initialRecordId?:string|null;initialStatus?:string}>();
 const emit=defineEmits<{closeDetail:[];'detail-change':[value:{open:boolean;name:string}]}>();
-const rows=ref<DataRow[]>([]),search=ref(''),status=ref(props.initialStatus||'all'),agent=ref('all'),source=ref('all'),
- date=ref<[string,string]|null>(null),detail=ref<DataRow|null>(null),busy=ref(false),
+type DateRange=[string,string];
+type Filters={status:string;agent:string;source:string;search:string;date:DateRange|null};
+const today=()=>dayjs().format('YYYY-MM-DD');
+const defaultRange=():DateRange=>{const d=today();return [d,d]};
+const initialFilters=():Filters=>({status:props.initialStatus||'all',agent:'all',source:'all',search:'',date:defaultRange()});
+const draft=ref<Filters>(initialFilters());
+const applied=ref<Filters>({...draft.value,date:defaultRange()});
+const rows=ref<DataRow[]>([]),agents=ref<string[]>([]),sources=ref<string[]>([]),
+ detail=ref<DataRow|null>(null),busy=ref(false),
  currentPage=ref(1),total=ref(0),detailBusy=ref(false);
-const agents=computed(()=>[...new Set(rows.value.map(r=>r.agentName))].filter(Boolean));
-const sources=computed(()=>[...new Set(rows.value.map(r=>r.sourceName))].filter(Boolean));
+let latestRequest=0;
 const pagination=computed(()=>({current:currentPage.value,pageSize:10,total:total.value,
- showSizeChanger:false,showTotal:(n:number)=>`共 ${n} 条`}));
+ showSizeChanger:false,showTotal:(n:number)=>'共 '+n+' 条'}));
+const agentOptions=computed(()=>[{value:'all',label:'全部 Agent'},...agents.value.map(v=>({value:v,label:v}))]);
+const sourceOptions=computed(()=>[{value:'all',label:'全部数据源'},...sources.value.map(v=>({value:v,label:v}))]);
+async function loadOptions(){
+ try{
+  const options=await api<{agents:string[];sources:string[]}>('/api/requests/filters');
+  agents.value=options.agents;sources.value=options.sources;
+ }catch(e){fail(e)}
+}
 async function refresh(){
+ const request=++latestRequest;
+ const filters=applied.value;
  try{
   busy.value=true;
   const params=new URLSearchParams({page:String(currentPage.value)});
-  if(status.value!=='all')params.set('status',status.value);
-  if(agent.value!=='all')params.set('agent',agent.value);
-  if(source.value!=='all')params.set('source',source.value);
-  if(search.value.trim())params.set('search',search.value.trim());
-  if(date.value?.[0])params.set('from',date.value[0]);
-  if(date.value?.[1])params.set('to',date.value[1]);
+  if(filters.status!=='all')params.set('status',filters.status);
+  if(filters.agent!=='all')params.set('agent',filters.agent);
+  if(filters.source!=='all')params.set('source',filters.source);
+  if(filters.search.trim())params.set('search',filters.search.trim());
+  if(filters.date?.[0])params.set('from',filters.date[0]);
+  if(filters.date?.[1])params.set('to',filters.date[1]);
   const response=await api<{items:DataRow[];total:number}>('/api/requests/page?'+params.toString());
+  if(request!==latestRequest)return;
   rows.value=response.items;total.value=response.total;
- }catch(e){fail(e)}finally{busy.value=false}
+ }catch(e){if(request===latestRequest){rows.value=[];total.value=0;fail(e)}}
+ finally{if(request===latestRequest)busy.value=false}
 }
-function onRangeChange(_values:unknown,dateStrings:string[]){date.value=dateStrings?.[0]&&dateStrings?.[1]?[dateStrings[0],dateStrings[1]]:null;}
+function onRangeChange(_values:unknown,dateStrings:string[]){
+ draft.value.date=dateStrings?.[0]&&dateStrings?.[1]?[dateStrings[0],dateStrings[1]]:null;
+}
+function query(){
+ applied.value={...draft.value,date:draft.value.date?[...draft.value.date] as DateRange:null};
+ currentPage.value=1;void refresh();
+}
+function reset(){draft.value=initialFilters();}
 function changePage(p:{current?:number}){currentPage.value=p.current||1;void refresh();}
 async function openRecord(id:string){
  try{
@@ -35,10 +61,9 @@ async function openRecord(id:string){
 }
 function closeRecord(){detail.value=null;emit('closeDetail');}
 watch([detail,detailBusy],()=>emit('detail-change',{open:Boolean(detail.value||detailBusy.value),name:detail.value?'访问 #'+String(detail.value.id||''):''}));
-watch([search,status,agent,source,date],()=>{currentPage.value=1;void refresh()});
 watch(()=>props.initialRecordId,id=>{if(id)void openRecord(id);else detail.value=null});
-watch(()=>props.initialStatus,next=>{status.value=next||'all';currentPage.value=1;});
-onMounted(()=>{void refresh();if(props.initialRecordId)void openRecord(props.initialRecordId)});
+watch(()=>props.initialStatus,next=>{draft.value.status=next||'all';query()});
+onMounted(()=>{void loadOptions();void refresh();if(props.initialRecordId)void openRecord(props.initialRecordId)});
 defineExpose({refresh});
 </script>
 <template>
@@ -72,12 +97,13 @@ defineExpose({refresh});
 </section>
 <section v-else class="panel">
  <div class="toolbar record-filters">
-  <a-select v-model:value="status" style="width:135px" :options="[{value:'all',label:'全部状态'},{value:'DENIED_OR_REJECTED',label:'已拒绝（含审批拒绝）'},...Object.entries(stateName).map(([value,label])=>({value,label}))]"/>
-  <a-select v-model:value="agent" style="width:140px" :options="[{value:'all',label:'全部 Agent'},...agents.map(v=>({value:v,label:v}))]"/>
-  <a-select v-model:value="source" style="width:150px" :options="[{value:'all',label:'全部数据源'},...sources.map(v=>({value:v,label:v}))]"/>
-  <a-range-picker :value="date" format="YYYY-MM-DD" value-format="YYYY-MM-DD" :placeholder="['开始日期','结束日期']" @change="onRangeChange"/>
-  <a-input-search v-model:value="search" allow-clear class="search" placeholder="搜索数据表、SQL 或请求编号"/>
- <a-button class="toolbar-refresh" @click="refresh">刷新</a-button>
+  <a-select v-model:value="draft.status" style="width:135px" :options="[{value:'all',label:'全部状态'},{value:'DENIED_OR_REJECTED',label:'已拒绝（含审批拒绝）'},...Object.entries(stateName).map(([value,label])=>({value,label}))]"/>
+  <a-select v-model:value="draft.agent" show-search option-filter-prop="label" style="width:140px" :options="agentOptions"/>
+  <a-select v-model:value="draft.source" show-search option-filter-prop="label" style="width:150px" :options="sourceOptions"/>
+  <a-range-picker :value="draft.date" format="YYYY-MM-DD" value-format="YYYY-MM-DD" :placeholder="['开始日期','结束日期']" @change="onRangeChange"/>
+  <a-input v-model:value="draft.search" allow-clear class="search" placeholder="搜索数据表、SQL 或请求编号"/>
+  <a-button class="record-reset-btn" @click="reset">重置</a-button>
+  <a-button type="primary" class="record-query-btn" @click="query">查询</a-button>
  </div>
  <a-table :data-source="rows" :loading="busy" row-key="id" :pagination="pagination" :scroll="{x:1350}" @change="changePage">
   <a-table-column title="序号" :width="65"><template #default="{index}">{{(currentPage-1)*10+index+1}}</template></a-table-column>

@@ -64,6 +64,17 @@ class ApprovalScopesIntegrationTest {
      VALUES(?,?,?,?,'orders','order_id',2,?,?,?, ?,DATE_ADD(NOW(3),INTERVAL 3 DAY))
      """,row[0],row[1],row[2],source,UUID.randomUUID().toString().replace("-","").repeat(2),row[3],row[5],row[4]);
   }
+  // Filter choices are across authorized history, not restricted by the current page or date.
+  String filterBody=mvc.perform(get("/api/requests/filters").with(user("admin").roles("ADMIN")))
+   .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+  JsonNode filters=mapper.readTree(filterBody);
+  assertTrue(filters.path("agents").isArray());
+  assertTrue(filters.path("sources").isArray());
+  assertTrue(filters.path("agents").toString().contains("approval-scopes-"));
+  assertTrue(filters.path("sources").toString().contains("Approval filter source"));
+  String ownerChoices=mvc.perform(get("/api/requests/filters").with(user(owner).roles("READER")))
+   .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+  assertTrue(ownerChoices.contains("Approval filter source"));
   Set<String> allAdmin=ids("all","admin","ADMIN");
   assertTrue(allAdmin.containsAll(Set.of(pendingOther,pendingSelf,autoSuccess,reviewedRejected,selfSuccess)));
   Set<String> toApproveAdmin=ids("pending","admin","ADMIN");
