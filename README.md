@@ -104,7 +104,7 @@ MCP 提供六个工具：list_datasources、get_schema、describe_table、valida
 
 ### 官方 MCP SDK 实现（Streamable HTTP）
 
-DataGuard 现在采用 **官方 MCP Java SDK 0.17.2 + Spring WebMVC Stateless Streamable HTTP**，不再使用自编写 JSON-RPC Controller。
+DataGuard 现在采用 **官方 MCP Java SDK 0.18.2 + Spring WebMVC Stateless Streamable HTTP**，不再使用自编写 JSON-RPC Controller。
 保留 SQL 权限、人工审批、审计、Agent Token 认证及 Origin 校验；
 不提供 SSE 推送时 GET /mcp 规范返回 405，notifications 返回 202。
 当前使用静态 Agent Bearer Token，不提供 OAuth 登录；客户端设置及实际验收状态见 [MCP 客户端接入与验收](docs/MCP_INTEROPERABILITY.md)。
