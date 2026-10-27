@@ -231,14 +231,33 @@ class ControlApi {
   return Map.of("updated",true);
  }
  @GetMapping("/requests") List<Map<String,Object>> requests(Authentication auth,@RequestParam(defaultValue="all") String scope){
-  if(!Set.of("all","pending","mine","handled").contains(scope))throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
+  if(!Set.of("all","pending","mine","handled").contains(scope))
+   throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid approval filter");
   boolean admin=auth.getAuthorities().stream().anyMatch(a->a.getAuthority().equals("ROLE_ADMIN"));
+  boolean reviewer=auth.getAuthorities().stream().anyMatch(a->a.getAuthority().equals("ROLE_APPROVER"));
+  String username=auth.getName();
   String conditions=" WHERE 1=1";
   List<Object> params=new ArrayList<>();
-  if("mine".equals(scope)){conditions+=" AND owner.username=?";params.add(auth.getName());}
-  else if("pending".equals(scope)){conditions+=" AND reviewer.username=? AND q.status='PENDING' AND q.expires_at>NOW(3)";params.add(auth.getName());}
-  else if("handled".equals(scope)){conditions+=" AND reviewer.username=? AND q.status<>'PENDING'";params.add(auth.getName());}
-  else if(!admin){conditions+=" AND owner.username=?";params.add(auth.getName());}
+  switch(scope){
+   case "all" -> {
+    // Administrators see all; other users can only see own requests.
+    if(!admin){conditions+=" AND owner.username=?";params.add(username);}
+   }
+   case "mine" -> {conditions+=" AND owner.username=?";params.add(username);}
+   case "pending" -> {
+    // ADMIN can decide any actionable request not created by them; approvers see assignments.
+    if(!admin&&!reviewer)throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Not an approver");
+    conditions+=" AND q.status='PENDING' AND q.expires_at>NOW(3) AND owner.username<>?";
+    params.add(username);
+    if(!admin){conditions+=" AND reviewer.username=?";params.add(username);}
+   }
+   case "handled" -> {
+    // Includes completed automatic ALLOW/DENY requests, not only manually reviewed records.
+    if(!admin&&!reviewer)throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Not an approver");
+    conditions+=" AND q.status NOT IN ('PENDING','EXECUTING')";
+    if(!admin){conditions+=" AND reviewer.username=?";params.add(username);}
+   }
+  }
   String sql="""
    SELECT q.id,q.created_at AS createdAt,q.expires_at AS expiresAt,
      q.finished_at AS finishedAt,q.table_name AS tableName,q.columns_csv AS columnsRequested,
@@ -250,7 +269,7 @@ class ControlApi {
    JOIN dg_sources s ON s.id=q.source_id JOIN dg_users owner ON owner.id=q.owner_id
    LEFT JOIN dg_users reviewer ON reviewer.id=q.approver_id
    LEFT JOIN dg_rules access_rule ON access_rule.id=q.rule_id
-   """+conditions+" ORDER BY q.created_at DESC LIMIT 300";
+   """+conditions+" ORDER BY q.created_at DESC,q.id DESC LIMIT 300";
   return db.queryForList(sql,params.toArray());
  }
 

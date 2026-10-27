@@ -75,7 +75,9 @@ test.beforeEach(async ({page})=>{
   }
   else if(path==='/api/requests'){
     const scope=url.searchParams.get('scope');
-    data=scope==='pending'?requests.filter(r=>r.status==='PENDING'):scope==='handled'?requests.filter(r=>r.status!=='PENDING'):requests;
+    data=scope==='pending'?requests.filter(r=>r.status==='PENDING'&&r.ownerUsername!=='admin'):
+     scope==='handled'?requests.filter(r=>!['PENDING','EXECUTING'].includes(r.status)):
+     scope==='mine'?requests.filter(r=>r.ownerUsername==='admin'):requests;
   }
   else if(path==='/api/notifications')data={unread:2,items:[
     {id:1,eventType:'PENDING',content:'待读取审批：orders',readAt:null,requestId:'q1'}
@@ -303,4 +305,35 @@ test('Agent lifecycle menus require stopping before grants and deletion',async({
  await expect(page.getByRole('menuitem',{name:/启用 Agent/})).toBeVisible();
  await expect(page.getByRole('menuitem',{name:/删除 Agent/})).not.toHaveAttribute('aria-disabled','true');
  await expect(page.getByText('已撤销')).toHaveCount(0);
+});
+
+test('approval scope buttons query distinct datasets and never show stale rows',async({page})=>{
+ await navigate(page,'审批中心');
+ const table=page.locator('.ant-table-tbody');
+ const labels=page.locator('.ant-radio-group');
+ await expect(table).toContainText('客服 Agent');
+ await expect(table).toContainText('数据分析 Agent');
+ await labels.getByText('待我审批',{exact:true}).click();
+ await expect(table).toContainText('客服 Agent');
+ await expect(table).not.toContainText('数据分析 Agent');
+ await labels.getByText('已处理',{exact:true}).click();
+ await expect(table).toContainText('数据分析 Agent');
+ await expect(table).not.toContainText('客服 Agent');
+ await labels.getByText('我发起的',{exact:true}).click();
+ await expect(page.locator('.ant-table')).toContainText('你尚未发起申请');
+ await expect(page.locator('.ant-table-tbody tr.ant-table-row')).toHaveCount(0);
+ await labels.getByText('全部申请',{exact:true}).click();
+ await expect(table).toContainText('客服 Agent');
+ await expect(table).toContainText('数据分析 Agent');
+
+ // Fast tab changes must not allow an older slower HTTP request to repaint the latest scope.
+ await page.route('**/api/requests?scope=handled',async route=>{
+  await new Promise(resolve=>setTimeout(resolve,500));
+  await route.fallback();
+ });
+ await labels.getByText('已处理',{exact:true}).click();
+ await labels.getByText('待我审批',{exact:true}).click();
+ await expect(table).toContainText('客服 Agent');
+ await page.waitForTimeout(650);
+ await expect(table).not.toContainText('数据分析 Agent');
 });
