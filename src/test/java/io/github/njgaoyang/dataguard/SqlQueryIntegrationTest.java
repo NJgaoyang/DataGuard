@@ -87,7 +87,7 @@ class SqlQueryIntegrationTest {
   assertEquals("SUCCESS",result.path("status").asText(),result.toString());
   assertEquals(21,result.path("rows").get(0).path("id").asInt());
   assertEquals(2,result.path("requestIds").size());
-  mvc.perform(post("/api/v1/agent/queries/sql").header("Authorization","Bearer "+f.token())
+  mvc.perform(post("/api/v1/agent/queries").header("Authorization","Bearer "+f.token())
    .contentType("application/json").content(json.writeValueAsString(args)))
    .andExpect(status().isOk()).andExpect(jsonPath("$.rowCount").value(1));
   mvc.perform(post("/api/v1/agent/queries/validate").header("Authorization","Bearer "+f.token())

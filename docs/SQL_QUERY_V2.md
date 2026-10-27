@@ -8,7 +8,7 @@ MCP 工具：
 
 REST：
 - `POST /api/v1/agent/queries/validate`
-- `POST /api/v1/agent/queries/sql`
+- `POST /api/v1/agent/queries`
 
 统一参数（Agent Bearer Token）：
 
@@ -49,6 +49,6 @@ Flyway V6 创建 `dg_sql_functions`，预置安全函数集。
 
 ## 兼容及审计
 
-旧工具 `execute_readonly`、`count_rows`、`aggregate_readonly` 和 REST 端点保留。新入口新增 SQL 参数指纹、独立表级审批和审计，所有结果通过相同的 Agent 鉴权。SQL 查询及其参数不写入明文审计记录。
+旧固定查询工具与单表 REST 端点已移除，SQL 查询是唯一执行入口。新入口新增 SQL 参数指纹、独立表级审批和审计，所有结果通过相同的 Agent 鉴权。SQL 查询及其参数不写入明文审计记录。
 
 当前 V2 不声称具备联邦查询、任意 SQL 或完全 SQL-92 语法覆盖。数据库物理数据仅使用独立只读账户查询，不创建或改写业务表。

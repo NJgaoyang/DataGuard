@@ -16,32 +16,6 @@ class BusinessReadExecutor {
  private final SourceApi sources;
  BusinessReadExecutor(SourceApi sources){this.sources=sources;}
 
- List<Map<String,Object>> execute(Map<String,Object> source,String sql,String filterValue,
-                                  List<String> columns,Set<String> masked,int limit,int timeoutSeconds) throws SQLException {
-  String jdbcUrl=sources.jdbcUrlFor(source);
-  List<Map<String,Object>> rows=new ArrayList<>();
-  try(var connection=DriverManager.getConnection(jdbcUrl,
-      String.valueOf(source.get("username")),sources.decryptPassword(source))){
-   connection.setReadOnly(true);
-   try(var statement=connection.prepareStatement(sql,ResultSet.TYPE_FORWARD_ONLY,ResultSet.CONCUR_READ_ONLY)){
-    statement.setQueryTimeout(timeoutSeconds);
-    statement.setMaxRows(limit);
-    if(filterValue!=null)statement.setString(1,filterValue);
-    try(var result=statement.executeQuery()){
-     while(result.next()){
-      Map<String,Object> row=new LinkedHashMap<>();
-      for(String column:columns){
-       Object value=result.getObject(column);
-       row.put(column,masked.contains(column)||value instanceof byte[]?"[REDACTED]":
-         value instanceof String text&&text.length()>256?text.substring(0,256):value);
-      }
-      rows.add(row);
-     }
-    }
-   }
-  }
-  return rows;
- }
  /** Return selected expression labels; never expose raw bytes or unbounded text. */
  List<Map<String,Object>> executeDynamic(Map<String,Object> source,String sql,List<Object> params,
                                          int limit,int timeoutSeconds) throws SQLException {
