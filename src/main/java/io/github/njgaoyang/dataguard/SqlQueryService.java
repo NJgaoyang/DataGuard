@@ -155,7 +155,7 @@ class SqlQueryService {
       JOIN dg_agents a ON a.id=ac.agent_id JOIN dg_users u ON u.id=a.owner_user_id
     WHERE ac.agent_id=? AND ac.source_id=? AND ac.table_name=?
       AND c.enabled=1 AND st.enabled=1 AND ds.enabled=1
-      AND a.enabled=1 AND a.revoked_at IS NULL AND a.expires_at>NOW(3)
+      AND a.enabled=1 AND a.deleted_at IS NULL AND a.expires_at>NOW(3)
       AND u.enabled=1 AND u.must_change_password=0
     """,agent.get("id"),sourceId,table);
    if(rows.isEmpty())throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Table is not authorized");
