@@ -103,6 +103,7 @@ class SqlQueryIntegrationTest {
    "SELECT * FROM orders",
    "SELECT o.order_id AS id FROM orders o; DROP TABLE orders",
    "SELECT o.order_id AS id FROM orders o JOIN order_items i ON 1=1 LIMIT 10",
+   "SELECT o.order_id AS id FROM orders o JOIN order_items i ON o.order_id=o.order_id LIMIT 10",
    "SELECT o.order_id AS id FROM orders o CROSS JOIN order_items i LIMIT 10",
    "SELECT o.order_id AS id FROM orders o JOIN order_items i ON o.order_id=i.order_id WHERE i.secret='x'",
    "SELECT customer_note FROM orders LIMIT 1",
@@ -126,6 +127,11 @@ class SqlQueryIntegrationTest {
   var plan=sqlService.plan(f.principal(),args);
   assertEquals(2,plan.params().size());
   assertEquals(3,plan.limit());
+  assertEquals("VALID",sqlService.validate(f.principal(),Map.of("sourceId",f.source(),
+    "sql","SELECT COUNT(*) AS total FROM orders LIMIT 1")).get("status"));
+  assertEquals(1,sqlService.plan(f.principal(),Map.of("sourceId",f.source(),
+    "sql","SELECT order_id FROM orders WHERE status=? LIMIT 1",
+    "params",java.util.Arrays.asList((Object)null))).params().size());
   db.update("UPDATE dg_sql_functions SET enabled=0 WHERE function_name='ROUND'");
   assertThrows(org.springframework.web.server.ResponseStatusException.class,
    ()->sqlService.plan(f.principal(),args));
