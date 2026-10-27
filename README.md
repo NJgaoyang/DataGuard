@@ -124,7 +124,6 @@ Cursor、VS Code、WorkBuddy、Claude、ChatGPT 的接入原则、配置示例�
 - [MCP 接入与验收](docs/MCP_INTEROPERABILITY.md) · [REST Agent API](docs/REST_AGENT_API.md)
 - [SQL 查询与安全模型](docs/SQL_QUERY.md) · [控制台与业务流程](docs/CONSOLE_GUIDE.md)
 - [部署运维与备份](docs/OPERATIONS.md) · [测试与验收边界](docs/TESTING.md)
-- [前端 UI 设计系统](docs/UI_DESIGN_SYSTEM.md)（共享组件、设计 Token、ECharts 与 Monaco）
 
 ## 开发与版本管理
 

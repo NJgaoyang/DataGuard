@@ -1,16 +1,10 @@
 <script setup lang="ts">
 import {computed,onMounted,ref,watch} from 'vue';
 import {api,match,page,fail,confirm,type DataRow} from '../api';
-import DgDataTable from '../components/DgDataTable.vue';
-import DgFilterBar from '../components/DgFilterBar.vue';
-import {useListSearch} from '../composables/useListSearch';
-import DgDetailPanel from '../components/DgDetailPanel.vue';
-import DgPermissionFields from '../components/DgPermissionFields.vue';
-const {draftSearch,appliedSearch,querySearch,resetSearch}=useListSearch();
 const props=defineProps<{initialDetailId?:string}>();
 const maxRowsPerQuery=ref(200);
 async function loadQueryLimit(){try{const limits=await api<{maxRowsPerQuery:number}>('/api/security/limits');maxRowsPerQuery.value=limits.maxRowsPerQuery}catch(e){fail(e)}}
-const rows=ref<DataRow[]>([]),selected=ref<DataRow|null>(null),tab=ref('fields'),
+const rows=ref<DataRow[]>([]),search=ref(''),selected=ref<DataRow|null>(null),tab=ref('fields'),
   sourceOpen=ref(false),viewMode=ref<'view'|'edit'>('view'),form=ref({name:'',type:'MYSQL',host:'',port:3306,databaseName:'',username:'',password:''}),
   tables=ref<DataRow[]>([]),columns=ref<DataRow[]>([]),activeTable=ref(''),newTable=ref(''),newColumn=ref(''),busy=ref(false),connectBusy=ref(false),connectResult=ref<DataRow|null>(null),credentialOpen=ref(false),tableSearch=ref(''),selectedFields=ref<string[]>([]),credentialForm=ref({username:'',password:''});
 const originalTables=ref<Record<string,boolean>>({});
@@ -51,7 +45,7 @@ async function saveGrants(){if(!selected.value||fieldsBusy.value||!dirtyGrants.v
   await refresh();
  }catch(e){fail(e);await loadTables();originalColumns.value={};draftColumns.value={};if(activeTable.value)await loadColumns(activeTable.value)}finally{fieldsBusy.value=false}
 }
-const filtered=computed(()=>rows.value.filter(r=>match(r,appliedSearch.value,['name','type','host'])));
+const filtered=computed(()=>rows.value.filter(r=>match(r,search.value,['name','type','host'])));
 async function refresh(){try{rows.value=await api('/api/sources')}catch(e){fail(e)}}
 async function open(row:DataRow,mode:'view'|'edit'='view'){viewMode.value=mode;selected.value=row;tab.value='fields';activeTable.value='';columns.value=[];draftColumns.value={};originalColumns.value={};tableSearch.value='';await loadTables()}
 async function loadTables(){if(!selected.value)return;try{tables.value=await api('/api/sources/'+selected.value.id+'/physical-tables')}catch{try{tables.value=await api('/api/sources/'+selected.value.id+'/tables')}catch(e){fail(e)}}originalTables.value=Object.fromEntries(tables.value.map(t=>[t.tableName,Boolean(t.enabled)]));}
@@ -100,8 +94,8 @@ onMounted(async()=>{await loadQueryLimit();await refresh();const row=rows.value.
 </script>
 <template>
 <section v-if="!selected" class="panel">
- <DgFilterBar @query="querySearch" @reset="resetSearch"><a-button type="primary" @click="create">＋ 新增数据源</a-button><a-input class="search" v-model:value="draftSearch" allow-clear placeholder="搜索数据库名称、类型或主机"/><template #actions><a-button class="toolbar-refresh" @click="refresh">刷新</a-button></template></DgFilterBar>
- <DgDataTable :data-source="filtered" row-key="id" :pagination="page" :scroll="{x:740}">
+ <div class="toolbar"><a-button type="primary" @click="create">＋ 新增数据源</a-button><a-input-search class="search" v-model:value="search" allow-clear placeholder="搜索数据库名称、类型或主机"/><a-button class="toolbar-refresh" @click="refresh">刷新</a-button></div>
+ <a-table :data-source="filtered" row-key="id" :pagination="page" :scroll="{x:740}">
  <a-table-column title="序号" :width="72"><template #default="{record}">{{filtered.findIndex(item=>item.id===record.id)+1}}</template></a-table-column>
   <a-table-column title="名称"><template #default="{record}"><a-button type="link" class="name-link" @click="open(record,'view')">{{record.name}}</a-button></template></a-table-column>
   <a-table-column title="类型" data-index="type"/>
@@ -109,10 +103,10 @@ onMounted(async()=>{await loadQueryLimit();await refresh();const row=rows.value.
   <a-table-column title="授权表数" data-index="authorizedTables"/>
   <a-table-column title="状态"><template #default="{record}"><a-tag :color="record.enabled?'green':'red'">{{record.enabled?'正常':'已停用'}}</a-tag></template></a-table-column>
   <a-table-column title="操作" :width="190"><template #default="{record}"><a-space size="small" class="table-row-actions"><a-button class="row-view-btn" @click="open(record,'view')">查看</a-button><a-dropdown :trigger="['click']"><a-button class="row-more-btn">更多 <svg class="row-more-chevron" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></a-button><template #overlay><a-menu class="row-more-menu"><a-menu-item @click="editSource(record)"><span class="row-menu-icon">✎</span>编辑授权</a-menu-item><a-menu-item @click="confirm(record.enabled?'确认停用数据源？Agent 将无法读取。':'确认启用数据源？恢复后仍需平台与 Agent 授权。',()=>toggleSource(record))"><span class="row-menu-icon">◷</span>{{record.enabled?'停用数据源':'启用数据源'}}</a-menu-item><a-menu-divider/><a-menu-item danger :disabled="!!record.enabled" @click="confirm('删除数据源（不可恢复）「'+record.name+'」？如存在审批历史或访问规则，将拒绝删除，请先停用。',()=>deleteSource(record))"><span class="row-menu-icon">♜</span>删除数据源</a-menu-item></a-menu></template></a-dropdown></a-space></template></a-table-column>
- </DgDataTable>
+ </a-table>
 </section>
-<DgDetailPanel v-else aria-label="数据源详情页面" back-label="返回数据源列表" @back="selected=null">
- 
+<section v-else class="panel detail-page" aria-label="数据源详情页面">
+ <teleport to="#workspace-actions"><a-button @click="selected=null">返回数据源列表</a-button></teleport>
  <div class="detail-content">
  <template v-if="selected">
   <div class="drawer-heading"><strong>{{selected.name}}</strong><a-tag :color="selected.enabled?'green':'red'">{{selected.enabled?'已开放':'已停用'}}</a-tag></div>
@@ -145,15 +139,8 @@ onMounted(async()=>{await loadQueryLimit();await refresh();const row=rows.value.
        <small v-if="item.enabled">已授权</small>
       </div><a-empty v-if="!shownTables.length" :image="undefined" description="暂无数据表"/></div>
      </div>
-     <div class="picker-columns">
-      <DgPermissionFields v-if="activeTable"
-       :fields="columns.map(c=>({name:String(c.columnName),checked:!!c.enabled,masked:!!c.masked}))"
-       :read-only="viewMode==='view'"
-       :disabled="fieldsBusy||!tables.find(t=>t.tableName===activeTable)?.enabled"
-       :show-mask="true" :show-select-all="true"
-       @toggle="(name:string,checked:boolean)=>{const row=columns.find(c=>c.columnName===name);if(row)setFieldGrant(row,checked)}"
-       @toggle-all="toggleAllFields" @toggle-mask="toggleMask"/>
-      <a-empty v-else :image="undefined" description="请选择左侧数据表"/>
+     <div class="picker-columns"><div class="picker-pane-head"><span>字段 <span>{{columns.filter(c=>c.enabled).length}} / {{columns.length}}</span></span><a-button type="link" size="small" :disabled="viewMode==='view'||!activeTable||!columns.length||fieldsBusy||!tables.find(t=>t.tableName===activeTable)?.enabled" @click="toggleAllFields">{{allFieldsSelected?'取消全选':'全选'}}</a-button></div>
+      <template v-if="activeTable"><div class="source-field-list"><div v-for="c in columns" :key="c.columnName" class="source-field-row"><a-checkbox :checked="!!c.enabled" :disabled="viewMode==='view'||fieldsBusy||!tables.find(t=>t.tableName===activeTable)?.enabled" @change="setFieldGrant(c,$event.target.checked)">{{c.columnName}}</a-checkbox><a-checkbox :checked="!!c.masked" :disabled="viewMode==='view'||!c.enabled||fieldsBusy" @change="toggleMask(c.columnName)">脱敏</a-checkbox></div></div></template><a-empty v-else :image="undefined" description="请选择左侧数据表"/>
      </div>
     </div>
     <div v-if="viewMode==='edit'" class="source-grant-footer"><span class="subtle">勾选表或字段后，点击保存才会更新权限。</span><a-button type="primary" :loading="fieldsBusy" :disabled="!dirtyGrants" @click="saveGrants">保存</a-button></div>
@@ -165,7 +152,7 @@ onMounted(async()=>{await loadQueryLimit();await refresh();const row=rows.value.
   </a-tabs>
  </template>
 </div>
-</DgDetailPanel>
+</section>
 <a-modal v-model:open="sourceOpen" title="新增数据源" :confirm-loading="busy" ok-text="保存" :width="610" @ok="save">
  <a-form layout="vertical"><div class="form-grid">
  <a-form-item label="名称" required><a-input v-model:value="form.name"/></a-form-item>

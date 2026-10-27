@@ -1,20 +1,15 @@
 <script setup lang="ts">
 import {computed,onMounted,ref,watch} from 'vue';
 import {api,stamp,match,page,fail,stateName,stateColor,type DataRow,type User} from '../api';
-import DgDataTable from '../components/DgDataTable.vue';
-import DgFilterBar from '../components/DgFilterBar.vue';
-import {useListSearch} from '../composables/useListSearch';
-import DgDetailPanel from '../components/DgDetailPanel.vue';
-const {draftSearch,appliedSearch,querySearch,resetSearch}=useListSearch();
 const props=defineProps<{user:User;initialScope?:string;initialDetailId?:string}>();
 type ApprovalScope='all'|'pending'|'mine'|'handled';
 const allowedScopes:ApprovalScope[]=props.user.roleCode==='ADMIN'?['all','pending','mine','handled']:
  props.user.roleCode==='READER'?['mine']:['pending','mine','handled'];
 const validScope=(value:string|undefined):value is ApprovalScope=>!!value&&allowedScopes.includes(value as ApprovalScope);
 const tab=ref<ApprovalScope>(validScope(props.initialScope)?props.initialScope:allowedScopes[0]);
-const rows=ref<DataRow[]>([]),loading=ref(false),detail=ref<DataRow|null>(null),approvalMode=ref(false),reason=ref(''),busy=ref(false);
+const rows=ref<DataRow[]>([]),loading=ref(false),search=ref(''),detail=ref<DataRow|null>(null),approvalMode=ref(false),reason=ref(''),busy=ref(false);
 let newestRequest=0;
-const filtered=computed(()=>rows.value.filter(r=>match(r,appliedSearch.value,['id','requesterName','agentName','tableName','sourceName','columnsRequested','reason'])));
+const filtered=computed(()=>rows.value.filter(r=>match(r,search.value,['id','requesterName','agentName','tableName','sourceName','columnsRequested','reason'])));
 const emptyText=computed(()=>({
  all:'暂无申请记录',pending:'当前没有待你审批的申请',mine:'你尚未发起申请',handled:'暂无已处理记录'
 })[tab.value]);
@@ -40,17 +35,17 @@ onMounted(async()=>{await refresh();if(props.initialDetailId){try{detail.value=a
 </script>
 <template>
 <section v-if="!detail" class="panel">
- <DgFilterBar class="stack" @query="querySearch" @reset="resetSearch">
+ <div class="toolbar stack">
  <a-radio-group v-model:value="tab" button-style="solid">
   <a-radio-button v-if="user.roleCode==='ADMIN'" value="all">全部申请</a-radio-button>
   <a-radio-button v-if="user.roleCode!=='READER'" value="pending">待我审批</a-radio-button>
   <a-radio-button value="mine">我发起的</a-radio-button>
   <a-radio-button v-if="user.roleCode!=='READER'" value="handled">已处理</a-radio-button>
  </a-radio-group>
- <a-input v-model:value="draftSearch" class="search" allow-clear placeholder="搜索申请内容、Agent 或表名"/>
- <template #actions><a-button class="toolbar-refresh" @click="refresh">刷新</a-button></template>
- </DgFilterBar>
- <DgDataTable :data-source="filtered" :loading="loading" :locale="{emptyText}" :pagination="page" row-key="id" :scroll="{x:850}">
+ <a-input-search v-model:value="search" class="search" allow-clear placeholder="搜索申请内容、Agent 或表名"/>
+ <a-button class="toolbar-refresh" @click="refresh">刷新</a-button>
+ </div>
+ <a-table :data-source="filtered" :loading="loading" :locale="{emptyText}" :pagination="page" row-key="id" :scroll="{x:850}">
   <a-table-column title="申请时间"><template #default="{record}">{{stamp(record.createdAt)}}</template></a-table-column>
   <a-table-column title="申请人" data-index="requesterName"/>
   <a-table-column title="Agent" data-index="agentName"/>
@@ -58,10 +53,10 @@ onMounted(async()=>{await refresh();if(props.initialDetailId){try{detail.value=a
   <a-table-column title="申请行数" data-index="requestedRows"/>
   <a-table-column title="状态"><template #default="{record}"><a-tag :color="stateColor(record.status)">{{stateName[record.status]||record.status}}</a-tag></template></a-table-column>
   <a-table-column title="操作" :width="190"><template #default="{record}"><a-space size="small" class="table-row-actions"><a-button class="row-view-btn" @click="detail=record;approvalMode=false;reason=''">查看</a-button><a-dropdown v-if="(record.approverUsername===user.username||user.roleCode==='ADMIN')&&record.ownerUsername!==user.username&&record.status==='PENDING'" :trigger="['click']"><a-button class="row-more-btn">更多 <svg class="row-more-chevron" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></a-button><template #overlay><a-menu class="row-more-menu"><a-menu-item @click="detail=record;approvalMode=true;reason=''"><span class="row-menu-icon">◉</span>处理审批</a-menu-item></a-menu></template></a-dropdown></a-space></template></a-table-column>
- </DgDataTable>
+ </a-table>
 </section>
-<DgDetailPanel v-else aria-label="审批详情页面" back-label="返回审批列表" @back="detail=null">
- 
+<section v-else class="panel detail-page" aria-label="审批详情页面">
+ <teleport to="#workspace-actions"><a-button @click="detail=null">返回审批列表</a-button></teleport>
  <div class="detail-content">
  <template v-if="detail">
   <div class="drawer-heading"><strong>{{detail.tableName}} 数据读取申请</strong><a-tag :color="stateColor(detail.status)">{{stateName[detail.status]||detail.status}}</a-tag></div>
@@ -88,6 +83,6 @@ onMounted(async()=>{await refresh();if(props.initialDetailId){try{detail.value=a
   <a-alert v-else-if="detail.status==='APPROVED'" style="margin-top:20px" type="info" message="审批已通过，Agent 可重试完全相同的请求一次。"/>
  </template>
 </div>
-</DgDetailPanel>
+</section>
 
 </template>
