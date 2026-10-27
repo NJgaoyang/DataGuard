@@ -115,7 +115,9 @@ test('all menu pages retain compact layout and open full-page details',async ({p
 
  await navigate(page,'Agent 管理');
  await page.getByRole('button',{name:/数据分析 Agent/}).click();
- await expect(page.locator('.detail-page')).toContainText('orders');
+ await page.locator('.agent-grant-pick-source .ant-select').click();
+ await page.locator('.ant-select-item-option').filter({hasText:'订单数据库'}).click();
+ await expect(page.locator('.detail-page .picker-list')).toContainText('orders');
  await page.screenshot({animations:'disabled',path:test.info().outputPath('03-agent-detail.png'),fullPage:true});
  await page.getByRole('button',{name:'返回 Agent 列表'}).click();
 
