@@ -129,7 +129,7 @@ test('all menu pages retain compact layout and open full-page details',async ({p
 
  await navigate(page,'审批中心');
  await expect(page.locator('.ant-table-tbody')).toContainText('客服 Agent');
- await page.locator('.ant-table-tbody').getByRole('button',{name:'审批'}).first().click();
+ await page.locator('.ant-table-tbody .row-view-btn').first().click();
  await expect(page.locator('.detail-page')).toContainText('读取字段');
  await page.screenshot({animations:'disabled',path:test.info().outputPath('05-approvals-detail.png'),fullPage:true});
  await page.getByRole('button',{name:'返回审批列表'}).click();
@@ -205,7 +205,7 @@ test('list pages have one title and breadcrumbs exist only on detail pages',asyn
  await expect(page.locator('.topbar-page .breadcrumb-parent')).toHaveCount(0);
 
  await navigate(page,'审批中心');
- await page.locator('.ant-table-tbody').getByRole('button',{name:'审批'}).first().click();
+ await page.locator('.ant-table-tbody .row-view-btn').first().click();
  await expect(page.locator('.topbar-page')).toContainText('申请 #q1');
  await page.getByRole('button',{name:'返回审批列表'}).click();
  await expect(page.locator('.topbar-page .breadcrumb-parent')).toHaveCount(0);
