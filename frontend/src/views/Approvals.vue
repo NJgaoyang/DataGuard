@@ -16,8 +16,12 @@ const allColumnsSelected=computed(()=>columnOptions.value.length>0&&preapplyForm
 const columnToggleLabel=computed(()=>allColumnsSelected.value?'取消全选':'全选');
 function toggleColumns(){preapplyForm.value.columns=allColumnsSelected.value?[]:[...columnOptions.value];}
 const columnOptions=computed(()=>preapplyOptions.value.filter(x=>x.sourceId===preapplyForm.value.sourceId&&x.tableName===preapplyForm.value.tableName).map(x=>String(x.columnName)));
-function resetTable(){preapplyForm.value.tableName='';preapplyForm.value.columns=[];}
-function changeTable(value:string){preapplyForm.value.tableName=value;preapplyForm.value.columns=[...columnOptions.value];}
+function resetTable(){preapplyForm.value.tableName='';preapplyForm.value.columns=[];
+ preapplyForm.value.filterColumn='';preapplyForm.value.filterValue='';
+ preapplyForm.value.sortColumn='';preapplyForm.value.sortDirection='ASC';preapplyForm.value.offset=0;}
+function changeTable(value:string){preapplyForm.value.tableName=value;preapplyForm.value.columns=[...columnOptions.value];
+ preapplyForm.value.filterColumn='';preapplyForm.value.filterValue='';
+ preapplyForm.value.sortColumn='';preapplyForm.value.sortDirection='ASC';preapplyForm.value.offset=0;}
 async function changeAgent(value:string){
  preapplyForm.value.agentId=value;preapplyForm.value.sourceId='';tableSearch.value='';resetTable();preapplyOptions.value=[];
  if(!value)return;
