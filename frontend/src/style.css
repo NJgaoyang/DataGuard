@@ -504,3 +504,39 @@
 /* Keep explicit reset and query immediately behind records search field, without toolbar auto margin. */
 .app-root .toolbar.record-filters > .record-query-btn,
 .app-root .toolbar.record-filters > .record-reset-btn{order:0;margin-left:0;white-space:nowrap}
+/* Design system V1: shared tokens and reusable list/detail/permission surfaces. */
+.app-root{background:var(--dg-background);color:var(--dg-text)}
+.app-root .panel{border:1px solid var(--dg-border);border-radius:var(--dg-radius-md);box-shadow:var(--dg-shadow-panel);background:var(--dg-surface)}
+.app-root .workspace-head h1{color:var(--dg-text)}
+.app-root .panel-head{border-bottom-color:var(--dg-border)}
+.app-root .dg-filter-bar{gap:var(--dg-space-3);align-items:center;min-height:66px}
+.dg-filter-actions{display:flex;align-items:center;gap:var(--dg-space-2)}
+.dg-filter-actions .ant-btn{min-width:70px}
+.dg-filter-actions .dg-filter-query{box-shadow:none}
+.app-root .dg-filter-bar .toolbar-refresh{margin-left:auto}
+.dg-data-table .ant-table-thead > tr > th{background:var(--dg-surface-muted);color:var(--dg-text-secondary);font-weight:600;white-space:nowrap}
+.dg-data-table .ant-table-tbody > tr > td{border-bottom-color:var(--dg-border)}
+.dg-data-table .ant-table-tbody > tr:hover > td{background:var(--dg-surface-muted)}
+.dg-data-table .ant-pagination{padding-right:var(--dg-space-4)}
+.dg-detail-panel .detail-content{max-width:100%}
+.dg-detail-panel .ant-descriptions-view{border-radius:var(--dg-radius-sm);overflow:hidden}
+.dg-permission-fields{height:100%;display:flex;flex-direction:column;min-width:0}
+.dg-permission-fields .source-field-list{flex:1;overflow:auto}
+.dg-permission-fields .picker-pane-head{flex:none}
+.dg-sql-viewer{background:#f8fafc;border:1px solid var(--dg-border);border-radius:var(--dg-radius-md);overflow:hidden}
+.dg-sql-head{display:flex;gap:var(--dg-space-2);align-items:center;padding:8px 12px;border-bottom:1px solid var(--dg-border);font-weight:600;font-size:12px}
+.dg-sql-head .ant-btn{margin-left:auto}
+.dg-sql-head .ant-tag{font-weight:400}
+.dg-sql-code{background:transparent;border:0;white-space:pre-wrap;overflow-wrap:anywhere;padding:14px 16px;margin:0;line-height:1.7;color:#344256;font-size:12px;font-family:ui-monospace,Consolas,monospace}
+.dg-sql-code .keyword{color:#1766e8;font-weight:650}.dg-sql-code .literal{color:#b45309}.dg-sql-code .number{color:#0f766e}
+.dg-sql-editor-toggle{display:flex;align-items:center;flex-wrap:wrap;gap:var(--dg-space-2);padding-top:var(--dg-space-3)}
+.dg-monaco-wrap{border:1px solid var(--dg-border);border-radius:var(--dg-radius-md);overflow:hidden;margin-top:var(--dg-space-3)}
+.dg-monaco-editor{width:100%;height:100%}
+.dg-chart-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;margin-bottom:18px}
+.dg-chart-panel{min-width:0;margin:0!important}
+.dg-chart-canvas{height:260px;width:100%;min-width:0}
+.dg-chart-panel .panel-head{min-height:52px}
+.dg-chart-panel .panel-head .subtle{font-size:11px}
+.dg-chart-empty{min-height:260px;display:grid;place-items:center}
+@media(max-width:970px){.dg-chart-grid{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:640px){.dg-filter-actions{width:100%;justify-content:flex-end}.dg-chart-canvas{height:230px}.dg-sql-head{flex-wrap:wrap}}
